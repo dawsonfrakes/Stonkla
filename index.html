@@ -81,6 +81,7 @@
         "app-settings-locale-label": "Locale:",
         "app-settings-theme-label": "Theme:",
         "app-settings-currency-label": "Currency:",
+        "trade-import-export-csv-type-select": "CSV Type:",
         "trade-import-export-import-button": "Import from CSV",
         "trade-import-export-export-button": "Export to CSV",
         "trade-entry-symbol-input": "Symbol:",
@@ -104,6 +105,8 @@
         "trade-table-tags": "Tags",
         "trade-table-edit": "Edit",
         "trade-table-remove": "Remove",
+        "trade-table-status-win": "WIN",
+        "trade-table-status-loss": "LOSS",
         "trade-stats-win-count": "Win Count",
         "trade-stats-loss-count": "Loss Count",
         "trade-stats-total-trades": "Total Trades",
@@ -123,6 +126,7 @@
         "app-settings-locale-label": "Lugar:",
         "app-settings-theme-label": "Tema:",
         "app-settings-currency-label": "Divisa:",
+        "trade-import-export-csv-type-select": "Tipo de CSV:",
         "trade-import-export-import-button": "Importar desde CSV",
         "trade-import-export-export-button": "Exportar a CSV",
         "trade-entry-symbol-input": "Símbolo:",
@@ -146,6 +150,8 @@
         "trade-table-tags": "Etiquetas",
         "trade-table-edit": "Editar",
         "trade-table-remove": "Eliminar",
+        "trade-table-status-win": "GANANCIA",
+        "trade-table-status-loss": "PÉRDIDA",
         "trade-stats-win-count": "Conteo de Ganancias",
         "trade-stats-loss-count": "Conteo de Pérdidas",
         "trade-stats-total-trades": "Total de Operaciones",
@@ -182,6 +188,8 @@
       return date.toISOString().slice(0, -1);
     };
 
+    const offsetDate = date => new Date(date - new Date().getTimezoneOffset() * 60 * 1000);
+
     const downloadTextFile = (type, filename, text) => {
       const blob = new Blob([text], {type});
       const url = URL.createObjectURL(blob);
@@ -197,6 +205,7 @@
       ...trade,
       executions: trade.executions.map(execution => ({
         ...execution,
+        time: new Date(execution.time).toISOString().slice(0, -1),
         quantity: parseFloat(execution.quantity),
         price: parseFloat(execution.price),
         fees: parseFloat(execution.fees),
@@ -290,24 +299,52 @@
     const TradeImportExport = ({trades}) => {
       const importFileRef = useRef(null);
       const {T} = useContext(LocaleContext);
+      const [importType, setImportType] = useState("stonkla");
 
       const importCSV = e => {
         e.preventDefault();
         const file = importFileRef.current.files[0];
         const reader = new FileReader();
         reader.onload = e => {
-          const rows = e.target.result.split("\n").slice(1).filter(line => line !== "").map(line => line.split(","));
           let newTrades = [];
-          for (let i = 0; i < rows.length; ) {
-            const [start_id, symbol, tags] = [...rows[i].slice(0, 2), rows[i][7].split(";")];
-            const executions = [];
-            while (i < rows.length) {
-              let [id, _symbol, action, time, quantity, price, fees, _tags] = rows[i];
-              if (id !== start_id) break;
-              executions.push({action, time, quantity, price, fees});
-              i += 1;
+          if (importType === "stonkla") {
+            const rows = e.target.result.split("\n").slice(1).filter(line => line !== "").map(line => line.split(","));
+            for (let i = 0; i < rows.length; ) {
+              const [start_id, symbol, tags] = [...rows[i].slice(0, 2), rows[i][7].split(";")];
+              const executions = [];
+              while (i < rows.length) {
+                let [id, _symbol, action, time, quantity, price, fees, _tags] = rows[i];
+                if (id !== start_id) break;
+                executions.push({action, time, quantity, price, fees});
+                i += 1;
+              }
+              newTrades.push(prepareTrade({symbol, executions, tags}));
             }
-            newTrades.push(prepareTrade({symbol, executions, tags}));
+          } else if (importType === "lightspeed") {
+            const lines = e.target.result.split("\n");
+            const headers = lines[0].split(",");
+            const rows = lines.slice(1).filter(line => line !== "").map(line => line.split(","));
+            const data = rows.map(row => Object.fromEntries(row.map((value, i) => [headers[i], value])));
+            for (let i = 0; i < data.length; ) {
+              const get = key => data[i][`"${key}"`].slice(1, -1).trim();
+              const start_symbol = get("Symbol");
+              const tags = ["Lightspeed"];
+              const executions = [];
+              while (i < data.length) {
+                const [symbol, action, time, quantity, price, fees] = [
+                  get("Symbol"),
+                  get("Side") === "B" ? "BUY" : "SELL",
+                  offsetDate(new Date(get("Raw Exec. Time"))),
+                  Math.abs(parseFloat(get("Qty"))),
+                  get("Price"),
+                  parseFloat(get("Commission Amount")) + parseFloat(get("Fee1")) + parseFloat(get("Fee2")) + parseFloat(get("Fee3")) + parseFloat(get("Fee4")) + parseFloat(get("FeeMF")) + parseFloat(get("FeeSEC")) + parseFloat(get("FeeStamp")) + parseFloat(get("FeeTAF")),
+                ];
+                if (symbol !== start_symbol) break;
+                executions.push({action, time, quantity, price, fees});
+                i += 1;
+              }
+              newTrades.push(prepareTrade({symbol: start_symbol, executions, tags}));
+            }
           }
           DB.bulkAdd("trades", newTrades)
         };
@@ -334,6 +371,11 @@
       return (
         h("div", null,
           h("form", {onSubmit: importCSV},
+            h("label", {for: "trade-import-export-csv-type-select"}, T("trade-import-export-csv-type-select")),
+            h("select", {id: "trade-import-export-csv-type-select", value: importType, onChange: e => setImportType(e.target.value)},
+              h("option", {value: "stonkla"}, "Stonkla"),
+              h("option", {value: "lightspeed"}, "Lightspeed"),
+            ),
             h("input", {ref: importFileRef, type: "file", required: true}),
             h("button", null, T("trade-import-export-import-button")),
           ),

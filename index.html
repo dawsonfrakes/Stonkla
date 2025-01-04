@@ -78,12 +78,14 @@
         "app-settings-locale-label": "Locale:",
         "app-settings-theme-label": "Theme:",
         "app-settings-currency-label": "Currency:",
+        "app-made-with-love": "Made with ❤️ by Dfra",
       },
       "es": {
         "translation-name": "Español",
         "app-settings-locale-label": "Lugar:",
         "app-settings-theme-label": "Tema:",
         "app-settings-currency-label": "Divisa:",
+        "app-made-with-love": "Hecho con ❤️ por Dfra",
       },
     };
 
@@ -410,6 +412,8 @@
           h(TradeImportExport, {trades}),
           h(TradeStats, {trades}),
           h(TradeTable, {trades, setTrades, editTrade}),
+          h("p", null, T("app-made-with-love")),
+          h("iframe", {src: "https://github.com/sponsors/dawsonfrakes/button", title: "Sponsor dawsonfrakes", height: "32", width: "114", style: "border: 0; border-radius: 6px;"}),
         )))
       );
     };

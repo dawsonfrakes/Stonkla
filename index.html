@@ -4,11 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stonkla</title>
-  <style>
-    body {
-      font-family: Helvetica, Arial, sans-serif;
-    }
-  </style>
 </head>
 <body>
   <script type="module">
@@ -170,12 +165,14 @@
     const THEMES = {
       "suisei-dark": {
         "background-primary": "#3b4a62",
+        "background-secondary": "lightgray",
         "text-primary": "#dbdeeb",
         "text-secondary": "#affaff",
         "accent": "#fe9841",
       },
       "suisei-light": {
         "background-primary": "#c4b59d",
+        "background-secondary": "gray",
         "text-primary": "#242114",
         "text-secondary": "#500500",
         "accent": "#0167be",
@@ -233,33 +230,35 @@
       const exitTotal = trade => trade.executions.reduce((acc, execution) => acc + (execution.quantity * execution.price - execution.fees) * (execution.action === "SELL"), 0);
 
       return (
-        h("table", null,
-          h("thead", null,
-            h("tr", null,
-              h("th", null, T("trade-table-time")),
-              h("th", null, T("trade-table-symbol")),
-              h("th", null, T("trade-table-status")),
-              h("th", null, T("trade-table-entry-total")),
-              h("th", null, T("trade-table-exit-total")),
-              h("th", null, T("trade-table-net-pl")),
-              h("th", null, T("trade-table-tags")),
-              h("th", null, T("trade-table-edit")),
-              h("th", null, T("trade-table-remove")),
+        h("div", {class: "overflow-scroll"},
+          h("table", null,
+            h("thead", null,
+              h("tr", null,
+                h("th", null, T("trade-table-time")),
+                h("th", null, T("trade-table-symbol")),
+                h("th", null, T("trade-table-status")),
+                h("th", null, T("trade-table-entry-total")),
+                h("th", null, T("trade-table-exit-total")),
+                h("th", null, T("trade-table-net-pl")),
+                h("th", null, T("trade-table-tags")),
+                h("th", null, T("trade-table-edit")),
+                h("th", null, T("trade-table-remove")),
+              ),
             ),
-          ),
-          h("tbody", null,
-            trades.map(trade => h("tr", null,
-              h("td", null, new Date(trade.executions[0].time).toLocaleString(locale)),
-              h("td", null, trade.symbol),
-              h("td", null, exitTotal(trade) - entryTotal(trade) >= 0.0 ? T("trade-table-status-win") : T("trade-table-status-loss")),
-              h("td", null, C(entryTotal(trade))),
-              h("td", null, C(exitTotal(trade))),
-              h("td", null, C(exitTotal(trade) - entryTotal(trade))),
-              h("td", null, trade.tags.join(";")),
-              h("td", null, h("button", {onClick: () => editTrade(trade)}, T("trade-table-edit"))),
-              h("td", null, h("button", {onClick: () => DB.delete("trades", trade.id)}, T("trade-table-remove"))),
-            )),
-          ),
+            h("tbody", null,
+              trades.map(trade => h("tr", null,
+                h("td", null, new Date(trade.executions[0].time).toLocaleString(locale)),
+                h("td", null, trade.symbol),
+                h("td", null, exitTotal(trade) - entryTotal(trade) >= 0.0 ? T("trade-table-status-win") : T("trade-table-status-loss")),
+                h("td", null, C(entryTotal(trade))),
+                h("td", null, C(exitTotal(trade))),
+                h("td", null, C(exitTotal(trade) - entryTotal(trade))),
+                h("td", null, trade.tags.join(";")),
+                h("td", null, h("button", {onClick: () => editTrade(trade)}, T("trade-table-edit"))),
+                h("td", null, h("button", {onClick: () => DB.delete("trades", trade.id)}, T("trade-table-remove"))),
+              )),
+            ),
+          )
         )
       );
     };
@@ -494,9 +493,6 @@
 
       useEffect(() => localStorage.setItem("locale", locale), [locale]);
       useEffect(() => {
-        document.body.style.backgroundColor = S("background-primary");
-        document.body.style.color = S("text-primary");
-        document.body.querySelectorAll("a").forEach(a => a.style.color = S("accent"));
         localStorage.setItem("theme", theme);
       }, [theme]);
       useEffect(() => localStorage.setItem("currency", currency), [currency]);
@@ -523,6 +519,48 @@
         h(LocaleContext.Provider, {value: {T, P, locale, setLocale}},
         h(ThemeContext.Provider, {value: {S, theme, setTheme}},
         h(CurrencyContext.Provider, {value: {C, currency, setCurrency}},
+          h("style", null, `
+            body {
+              font-family: Helvetica, Arial, sans-serif;
+              background-color: ${S("background-primary")};
+              color: ${S("text-primary")};
+            }
+
+            a {
+              color: ${S("accent")};
+            }
+
+            .overflow-scroll {
+              overflow: scroll;
+            }
+
+            table {
+              text-align: left;
+              border-collapse: collapse;
+            }
+
+            thead {
+              border-block-end: 2px solid;
+            }
+
+            th, td {
+              border: 1px solid ${S("background-secondary")};
+              padding: 0.15rem 0.25rem;
+              word-break: keep-all;
+            }
+
+            tbody tr:nth-child(even) {
+              background: color-mix(in srgb, ${S("background-secondary")}, transparent 80%);
+            }
+
+            th {
+              text-align: start;
+            }
+
+            td {
+              text-align: end;
+            }
+          `),
           h("h1", null, "Stonkla"),
           h(AppSettings),
           showTradeEntry &&

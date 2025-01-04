@@ -76,6 +76,8 @@
         "app-settings-locale-label": "Locale:",
         "app-settings-theme-label": "Theme:",
         "app-settings-currency-label": "Currency:",
+        "app-settings-remove-all-trades": "Remove All Trades",
+        "app-settings-remove-all-trades-confirm": "Are you sure you want to remove all trades?",
         "trade-import-export-csv-type-select": "CSV Type:",
         "trade-import-export-import-button": "Import from CSV",
         "trade-import-export-export-button": "Export to CSV",
@@ -87,6 +89,12 @@
         "trade-entry-quantity-input": "Quantity:",
         "trade-entry-price-input": "Price:",
         "trade-entry-fees-input": "Fees:",
+        "trade-entry-symbol-placeholder": "Symbol",
+        "trade-entry-tags-placeholder": "Tags",
+        "trade-entry-time-placeholder": "Time",
+        "trade-entry-quantity-placeholder": "Quantity",
+        "trade-entry-price-placeholder": "Price",
+        "trade-entry-fees-placeholder": "Fees",
         "trade-entry-add-execution": "Add Execution",
         "trade-entry-delete-execution": "Remove",
         "trade-entry-save": "Save",
@@ -102,6 +110,7 @@
         "trade-table-remove": "Remove",
         "trade-table-status-win": "WIN",
         "trade-table-status-loss": "LOSS",
+        "trade-stats-total-profit-loss": "Total Profit/Loss",
         "trade-stats-win-count": "Win Count",
         "trade-stats-loss-count": "Loss Count",
         "trade-stats-total-trades": "Total Trades",
@@ -110,8 +119,6 @@
         "trade-stats-largest-loss": "Largest Loss",
         "trade-stats-average-win": "Average Win",
         "trade-stats-average-loss": "Average Loss",
-        "app-settings-remove-all-trades": "Remove All Trades",
-        "app-settings-remove-all-trades-confirm": "Are you sure you want to remove all trades?",
       },
       "es": {
         "translation-name": "Español",
@@ -122,6 +129,8 @@
         "app-settings-locale-label": "Lugar:",
         "app-settings-theme-label": "Tema:",
         "app-settings-currency-label": "Divisa:",
+        "app-settings-remove-all-trades": "Eliminar Todas las Operaciones",
+        "app-settings-remove-all-trades-confirm": "¿Estás seguro de que quieres eliminar todas las operaciones?",
         "trade-import-export-csv-type-select": "Tipo de CSV:",
         "trade-import-export-import-button": "Importar desde CSV",
         "trade-import-export-export-button": "Exportar a CSV",
@@ -133,6 +142,12 @@
         "trade-entry-quantity-input": "Cantidad:",
         "trade-entry-price-input": "Precio:",
         "trade-entry-fees-input": "Comisiones:",
+        "trade-entry-symbol-placeholder": "Símbolo",
+        "trade-entry-tags-placeholder": "Etiquetas",
+        "trade-entry-time-placeholder": "Hora",
+        "trade-entry-quantity-placeholder": "Cantidad",
+        "trade-entry-price-placeholder": "Precio",
+        "trade-entry-fees-placeholder": "Comisiones",
         "trade-entry-add-execution": "Añadir Ejecución",
         "trade-entry-delete-execution": "Eliminar",
         "trade-entry-save": "Guardar",
@@ -148,6 +163,7 @@
         "trade-table-remove": "Eliminar",
         "trade-table-status-win": "GANANCIA",
         "trade-table-status-loss": "PÉRDIDA",
+        "trade-stats-total-profit-loss": "Total de Ganancias/Pérdidas",
         "trade-stats-win-count": "Conteo de Ganancias",
         "trade-stats-loss-count": "Conteo de Pérdidas",
         "trade-stats-total-trades": "Total de Operaciones",
@@ -156,8 +172,6 @@
         "trade-stats-largest-loss": "Mayor Pérdida",
         "trade-stats-average-win": "Promedio de Ganancias",
         "trade-stats-average-loss": "Promedio de Pérdidas",
-        "app-settings-remove-all-trades": "Eliminar Todas las Operaciones",
-        "app-settings-remove-all-trades-confirm": "¿Estás seguro de que quieres eliminar todas las operaciones?",
       },
     };
     console.assert(Object.keys(TRANSLATIONS).every(l => Object.keys(TRANSLATIONS[l]).reduce((acc, key, i) => acc && key === Object.keys(TRANSLATIONS[Object.keys(TRANSLATIONS)[0]])[i])), "All locales must have the same keys.");
@@ -180,13 +194,13 @@
     };
     console.assert(Object.keys(THEMES).every(t => Object.keys(THEMES[t]).reduce((acc, key, i) => acc && key === Object.keys(THEMES[Object.keys(THEMES)[0]])[i]), "All themes must have the same keys."));
 
+    const offsetDate = date => new Date(date - new Date().getTimezoneOffset() * 60 * 1000);
+
     const currentMinute = () => {
-      const date = new Date(new Date() - new Date().getTimezoneOffset() * 60 * 1000);
+      const date = offsetDate(new Date());
       date.setSeconds(0, 0);
       return date.toISOString().slice(0, -1);
     };
-
-    const offsetDate = date => new Date(date - new Date().getTimezoneOffset() * 60 * 1000);
 
     const downloadTextFile = (type, filename, text) => {
       const blob = new Blob([text], {type});
@@ -230,7 +244,7 @@
       const exitTotal = trade => trade.executions.reduce((acc, execution) => acc + (execution.quantity * execution.price - execution.fees) * (execution.action === "SELL"), 0);
 
       return (
-        h("div", {class: "overflow-scroll"},
+        h("div", {class: "overflow-auto"},
           h("table", null,
             h("thead", null,
               h("tr", null,
@@ -267,7 +281,8 @@
       const {T, P} = useContext(LocaleContext);
       const {C} = useContext(CurrencyContext);
 
-      const netProfitLosses = trades.map(trade => trade.executions.reduce((acc, execution) => acc + (execution.quantity * execution.price) * (execution.action === "BUY" ? -1 : 1) - execution.fees, 0))
+      const netProfitLosses = trades.map(trade => trade.executions.reduce((acc, execution) => acc + (execution.quantity * execution.price) * (execution.action === "BUY" ? -1 : 1) - execution.fees, 0));
+      const total = netProfitLosses.reduce((acc, net) => acc + net, 0);
       const wins = netProfitLosses.filter(net => net >= 0.0);
       const losses = netProfitLosses.filter(net => net < 0.0);
       const largestWin = wins.reduce((acc, net) => Math.max(acc, net), 0);
@@ -277,6 +292,8 @@
 
       return (
         h("div", null,
+          `${T("trade-stats-total-profit-loss")}: ${C(total)}`,
+          h("br"),
           `${T("trade-stats-win-count")}: ${wins.length}`,
           h("br"),
           `${T("trade-stats-loss-count")}: ${losses.length}`,
@@ -425,9 +442,9 @@
           h("form", {onSubmit},
             h("div", null,
               h("label", {for: "trade-entry-symbol-input"}, T("trade-entry-symbol-input")),
-              h("input", {id: "trade-entry-symbol-input", type: "text", required: true, placeholder: "Symbol", value: trade.symbol, onInput: e => setTrade({...trade, symbol: e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 5)})}),
+              h("input", {id: "trade-entry-symbol-input", type: "text", required: true, placeholder: T("trade-entry-symbol-placeholder"), value: trade.symbol, onInput: e => setTrade({...trade, symbol: e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 5)})}),
               h("label", {for: "trade-entry-tags-input"}, T("trade-entry-tags-input")),
-              h("input", {id: "trade-entry-tags-input", type: "text", placeholder: "Tags", value: trade.tags.join(";"), onInput: e => setTrade({...trade, tags: e.target.value.replace(/,/g, "").split(";")})}),
+              h("input", {id: "trade-entry-tags-input", type: "text", placeholder: T("trade-entry-tags-placeholder"), value: trade.tags.join(";"), onInput: e => setTrade({...trade, tags: e.target.value.replace(/,/g, "").split(";")})}),
             ),
             trade.executions.map((execution, i) => h("div", {key: i},
               h("button", {type: "button", onClick: () => deleteExecution(i), disabled: trade.executions.length === 1}, T("trade-entry-delete-execution")),
@@ -435,11 +452,11 @@
               h("label", {for: "trade-entry-time-input" + i}, T("trade-entry-time-input")),
               h("input", {id: "trade-entry-time-input" + i, type: "datetime-local", required: true, step: "1", value: execution.time, onInput: e => updateExecution(i, {time: e.target.value})}),
               h("label", {for: "trade-entry-quantity-input" + i}, T("trade-entry-quantity-input")),
-              h("input", {id: "trade-entry-quantity-input" + i, type: "number", required: true, placeholder: "Quantity", min: "0", step: "0.0001", value: execution.quantity, onInput: e => updateExecution(i, {quantity: e.target.value})}),
+              h("input", {id: "trade-entry-quantity-input" + i, type: "number", required: true, placeholder: T("trade-entry-quantity-placeholder"), min: "0", step: "0.0001", value: execution.quantity, onInput: e => updateExecution(i, {quantity: e.target.value})}),
               h("label", {for: "trade-entry-price-input" + i}, T("trade-entry-price-input")),
-              h("input", {id: "trade-entry-price-input" + i, type: "number", required: true, placeholder: "Price", min: "0", step: "0.0001", value: execution.price, onInput: e => updateExecution(i, {price: e.target.value})}),
+              h("input", {id: "trade-entry-price-input" + i, type: "number", required: true, placeholder: T("trade-entry-price-placeholder"), min: "0", step: "0.0001", value: execution.price, onInput: e => updateExecution(i, {price: e.target.value})}),
               h("label", {for: "trade-entry-fees-input" + i}, T("trade-entry-fees-input")),
-              h("input", {id: "trade-entry-fees-input" + i, type: "number", required: true, placeholder: "Fees", step: "0.0001", value: execution.fees, onInput: e => updateExecution(i, {fees: e.target.value})}),
+              h("input", {id: "trade-entry-fees-input" + i, type: "number", required: true, placeholder: T("trade-entry-fees-placeholder"), step: "0.0001", value: execution.fees, onInput: e => updateExecution(i, {fees: e.target.value})}),
             )),
             h("button", {type: "button", onClick: addExecution}, T("trade-entry-add-execution")),
             h("button", null, T("trade-entry-save")),
@@ -530,8 +547,8 @@
               color: ${S("accent")};
             }
 
-            .overflow-scroll {
-              overflow: scroll;
+            .overflow-auto {
+              overflow: auto;
             }
 
             table {

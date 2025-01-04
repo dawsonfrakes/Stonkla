@@ -206,8 +206,7 @@
       const blob = new Blob([text], {type});
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
+      [a.href, a.download] = [url, filename];
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
@@ -260,7 +259,7 @@
               ),
             ),
             h("tbody", null,
-              trades.map(trade => h("tr", null,
+              trades.map(trade => h("tr", {key: trade.id},
                 h("td", null, new Date(trade.executions[0].time).toLocaleString(locale)),
                 h("td", null, trade.symbol),
                 h("td", null, exitTotal(trade) - entryTotal(trade) >= 0.0 ? T("trade-table-status-win") : T("trade-table-status-loss")),
@@ -433,9 +432,7 @@
         closeSelf();
       };
 
-      useEffect(() => {
-        if (trade.executions.length === 0) addExecution();
-      }, []);
+      useEffect(() => { if (trade.executions.length === 0) addExecution(); }, []);
 
       return (
         h("div", null,
@@ -509,18 +506,12 @@
       const P = amount => new Intl.NumberFormat(locale, {style: "percent", maximumFractionDigits: 2}).format(amount);
 
       useEffect(() => localStorage.setItem("locale", locale), [locale]);
-      useEffect(() => {
-        localStorage.setItem("theme", theme);
-      }, [theme]);
+      useEffect(() => localStorage.setItem("theme", theme), [theme]);
       useEffect(() => localStorage.setItem("currency", currency), [currency]);
 
       const newTrade = () => {
         if (showTradeEntry) return;
-        setEditingTrade({
-          symbol: "",
-          executions: [],
-          tags: [],
-        });
+        setEditingTrade({symbol: "", executions: [], tags: []});
         setTradeEntrySave(() => trade => DB.add("trades", prepareTrade(trade)));
         setShowTradeEntry(true);
       };
@@ -542,41 +533,20 @@
               background-color: ${S("background-primary")};
               color: ${S("text-primary")};
             }
+            a { color: ${S("accent")}; }
 
-            a {
-              color: ${S("accent")};
-            }
+            .overflow-auto { overflow: auto; }
 
-            .overflow-auto {
-              overflow: auto;
-            }
-
-            table {
-              text-align: left;
-              border-collapse: collapse;
-            }
-
-            thead {
-              border-block-end: 2px solid;
-            }
-
+            table { text-align: left; border-collapse: collapse; }
+            thead { border-block-end: 2px solid; }
             th, td {
               border: 1px solid ${S("background-secondary")};
               padding: 0.15rem 0.25rem;
               word-break: keep-all;
             }
-
-            tbody tr:nth-child(even) {
-              background: color-mix(in srgb, ${S("background-secondary")}, transparent 80%);
-            }
-
-            th {
-              text-align: start;
-            }
-
-            td {
-              text-align: end;
-            }
+            tbody tr:nth-child(even) { background: color-mix(in srgb, ${S("background-secondary")}, transparent 80%); }
+            th { text-align: start; }
+            td { text-align: end; }
           `),
           h("h1", null, "Stonkla"),
           h(AppSettings),

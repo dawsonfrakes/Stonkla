@@ -75,6 +75,7 @@
       "en": {
         "translation-name": "English",
         "app-add-trade": "Add Trade",
+        "app-privacy-notice": `NOTICE: Your data is private and I don't want it. This app uses IndexedDB to store trades locally in your browser. Please make regular backups using the "Export to CSV" feature. Breaking changes to the site may occur without notice. Storing your data offline is the safest way to use this site.`,
         "app-made-with-love": "Made with ❤️ by Dfra",
         "app-sponsor-link": "Sponsor on GitHub",
         "app-settings-locale-label": "Locale:",
@@ -120,6 +121,7 @@
       "es": {
         "translation-name": "Español",
         "app-add-trade": "Añadir Operación",
+        "app-privacy-notice": `AVISO: Tus datos son privados y no los quiero. Esta aplicación utiliza IndexedDB para almacenar operaciones localmente en tu navegador. Por favor, haz copias de seguridad regulares utilizando la función "Exportar a CSV". Cambios en el sitio pueden ocurrir sin previo aviso. Almacenar tus datos sin conexión es la forma más segura de usar este sitio.`,
         "app-made-with-love": "Hecho con ❤️ por Dfra",
         "app-sponsor-link": "Patrocinar en GitHub",
         "app-settings-locale-label": "Lugar:",
@@ -530,6 +532,8 @@
           h(TradeStats, {trades}),
           h(TradeTable, {trades, setTrades, editTrade}),
           h("p", null,
+            T("app-privacy-notice"),
+            h("br"),
             T("app-made-with-love"),
             h("br"),
             h("a", {href: "https://github.com/sponsors/dawsonfrakes", target: "_blank"}, T("app-sponsor-link")),

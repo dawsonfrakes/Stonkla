@@ -361,6 +361,34 @@
               }
               newTrades.push(prepareTrade({symbol: start_symbol, executions, tags}));
             }
+          } else if (importType === "webull") {
+            const lines = e.target.result.split("\n");
+            const headers = lines[0].split(",");
+            const rows = lines.slice(1).filter(line => line !== "").map(line => line.split(","));
+            const data = rows.map(row => Object.fromEntries(row.map((value, i) => [headers[i], value])));
+            const filtered = data.filter(item => item["Status"] === "Filled");
+            for (let i = 0; i < filtered.length; ) {
+              const get = key => filtered[i][key];
+              const start_symbol = get("Symbol");
+              const tags = ["Webull"];
+              const executions = [];
+              while (i < filtered.length) {
+                const [symbol, action, time, quantity, price, fees] = [
+                  get("Symbol"),
+                  get("Side") === "Buy" ? "BUY" : "SELL",
+                  offsetDate(new Date(get("Placed Time"))),
+                  Math.abs(parseFloat(get("Filled"))),
+                  get("Price").slice(1),
+                  get("Side") === "Sell" ? 0.02 : 0.0,
+                ];
+                if (symbol !== start_symbol) break;
+                executions.push({action, time, quantity, price, fees});
+                i += 1;
+              }
+              executions.reverse();
+              newTrades.push(prepareTrade({symbol: start_symbol, executions, tags}));
+            }
+            newTrades.reverse()
           }
           DB.bulkAdd("trades", newTrades)
         };
@@ -391,6 +419,7 @@
             h("select", {id: "trade-import-export-csv-type-select", value: importType, onChange: e => setImportType(e.target.value)},
               h("option", {value: "stonkla"}, "Stonkla"),
               h("option", {value: "lightspeed"}, "Lightspeed"),
+              h("option", {value: "webull"}, "Webull"),
             ),
             h("input", {ref: importFileRef, type: "file", required: true}),
             h("button", null, T("trade-import-export-import-button")),

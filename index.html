@@ -70,6 +70,7 @@
       "en": {
         "translation-name": "English",
         "app-add-trade": "Add Trade",
+        "app-import-export-trades": "Import/Export",
         "app-privacy-notice": `NOTICE: Your data is private and I don't want it. This app uses IndexedDB to store trades locally in your browser. Please make regular backups using the "Export to CSV" feature. Breaking changes to the site may occur without notice. Storing your data offline is the safest way to use this site.`,
         "app-made-with-love": "Made with ❤️ by Dfra",
         "app-sponsor-link": "Sponsor on GitHub",
@@ -81,6 +82,7 @@
         "trade-import-export-csv-type-select": "CSV Type:",
         "trade-import-export-import-button": "Import from CSV",
         "trade-import-export-export-button": "Export to CSV",
+        "trade-import-export-close-button": "Close",
         "trade-entry-symbol-input": "Symbol:",
         "trade-entry-tags-input": "Tags:",
         "trade-entry-buy-button": "BUY",
@@ -123,6 +125,7 @@
       "es": {
         "translation-name": "Español",
         "app-add-trade": "Añadir Operación",
+        "app-import-export-trades": "Importación/exportación",
         "app-privacy-notice": `AVISO: Tus datos son privados y no los quiero. Esta aplicación utiliza IndexedDB para almacenar operaciones localmente en tu navegador. Por favor, haz copias de seguridad regulares utilizando la función "Exportar a CSV". Cambios en el sitio pueden ocurrir sin previo aviso. Almacenar tus datos sin conexión es la forma más segura de usar este sitio.`,
         "app-made-with-love": "Hecho con ❤️ por Dfra",
         "app-sponsor-link": "Patrocinar en GitHub",
@@ -134,6 +137,7 @@
         "trade-import-export-csv-type-select": "Tipo de CSV:",
         "trade-import-export-import-button": "Importar desde CSV",
         "trade-import-export-export-button": "Exportar a CSV",
+        "trade-import-export-close-button": "Cerca",
         "trade-entry-symbol-input": "Símbolo:",
         "trade-entry-tags-input": "Etiquetas:",
         "trade-entry-buy-button": "COMPRA",
@@ -312,8 +316,9 @@
       );
     };
 
-    const TradeImportExport = ({trades}) => {
+    const TradeImportExport = ({trades, closeSelf}) => {
       const importFileRef = useRef(null);
+      const dialogRef = useRef(null);
       const {T} = useContext(LocaleContext);
       const [importType, setImportType] = useState("stonkla");
 
@@ -412,8 +417,17 @@
         downloadTextFile("text/csv", "trades.csv", result);
       };
 
+      const onKeyDown = ev => {
+        if (ev.key === "Escape") closeSelf();
+      };
+
+      useEffect(() => {
+        dialogRef.current?.showModal();
+        return () => dialogRef.current?.close();
+      }, []);
+
       return (
-        h("div", null,
+        h("dialog", {ref: dialogRef, onKeyDown},
           h("form", {onSubmit: importCSV},
             h("label", {for: "trade-import-export-csv-type-select"}, T("trade-import-export-csv-type-select")),
             h("select", {id: "trade-import-export-csv-type-select", value: importType, onChange: e => setImportType(e.target.value)},
@@ -425,12 +439,14 @@
             h("button", null, T("trade-import-export-import-button")),
           ),
           h("button", {onClick: exportCSV}, T("trade-import-export-export-button")),
+          h("button", {onClick: closeSelf}, T("trade-import-export-close-button")),
         )
       );
     };
 
     const TradeEntry = ({trade, setTrade, onSave, closeSelf}) => {
       const {T} = useContext(LocaleContext);
+      const dialogRef = useRef(null);
 
       const addExecution = () => {
         const executions = [...trade.executions];
@@ -461,10 +477,18 @@
         closeSelf();
       };
 
+      const onKeyDown = ev => {
+        if (ev.key === "Escape") closeSelf();
+      };
+
       useEffect(() => { if (trade.executions.length === 0) addExecution(); }, []);
+      useEffect(() => {
+        dialogRef.current?.showModal();
+        return () => dialogRef.current?.close();
+      }, []);
 
       return (
-        h("div", null,
+        h("dialog", {ref: dialogRef, onKeyDown},
           h("form", {onSubmit},
             h("div", null,
               h("label", {for: "trade-entry-symbol-input"}, T("trade-entry-symbol-input")),
@@ -525,6 +549,7 @@
       const [theme, setTheme] = useState(defaultTheme in THEMES ? defaultTheme : Object.keys(THEMES)[0]);
       const [currency, setCurrency] = useState(defaultCurrency);
       const [showTradeEntry, setShowTradeEntry] = useState(false);
+      const [showImportExport, setShowImportExport] = useState(false);
       const [tradeEntrySave, setTradeEntrySave] = useState(null);
       const [editingTrade, setEditingTrade] = useState(null);
       const [trades, setTrades] = useState([]);
@@ -539,14 +564,12 @@
       useEffect(() => localStorage.setItem("currency", currency), [currency]);
 
       const newTrade = () => {
-        if (showTradeEntry) return;
         setEditingTrade({symbol: "", executions: [], tags: []});
         setTradeEntrySave(() => trade => DB.add("trades", prepareTrade(trade)));
         setShowTradeEntry(true);
       };
 
       const editTrade = trade => {
-        if (showTradeEntry) return;
         setEditingTrade(trade);
         setTradeEntrySave(() => trade => DB.put("trades", prepareTrade(trade)));
         setShowTradeEntry(true);
@@ -579,10 +602,12 @@
           `),
           h("h1", null, "Stonkla"),
           h(AppSettings),
-          showTradeEntry &&
-            h(TradeEntry, {trade: editingTrade, setTrade: setEditingTrade, onSave: tradeEntrySave, closeSelf: () => setShowTradeEntry(false)}) ||
-            h("div", null, h("button", {onClick: newTrade}, T("app-add-trade"))),
-          h(TradeImportExport, {trades}),
+          h("div", null,
+            h("button", {onClick: newTrade}, T("app-add-trade")),
+            h("button", {onClick: () => setShowImportExport(true)}, T("app-import-export-trades")),
+          ),
+          showTradeEntry && h(TradeEntry, {trade: editingTrade, setTrade: setEditingTrade, onSave: tradeEntrySave, closeSelf: () => setShowTradeEntry(false)}),
+          showImportExport && h(TradeImportExport, {trades, closeSelf: () => setShowImportExport(false)}),
           h(TradeStats, {trades}),
           h(TradeTable, {trades, setTrades, editTrade}),
           h("p", null,

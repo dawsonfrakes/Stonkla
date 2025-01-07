@@ -6,12 +6,68 @@
   <title>Stonkla</title>
 </head>
 <body>
-  <script type="module">
-    import {h, render, createContext} from 'https://esm.sh/preact';
-    import {useState, useEffect, useContext, useRef} from 'https://esm.sh/preact/hooks';
+  <script>
+    let context = null;
+    const createTextElement = text => ({type: "TEXT_ELEMENT", props: {nodeValue: text, children: []}});
+    const createElement = (type, props, ...children) =>
+      ({type, props: {...props, children: children.flat().map(child => typeof child === "string" || typeof child === "number" ? createTextElement(child) : child)}});
+    const h = createElement;
+    const useState = defaultValue => {
+      if (context.index === context.hooks.length) context.hooks.push({value: typeof defaultValue === "function" ? defaultValue() : defaultValue});
+      const [hook, update] = [context.hooks[context.index++], context.update];
+      const setHook = newValue => { hook.value = typeof newValue === "function" ? newValue() : newValue; update(); };
+      return [hook.value, setHook];
+    };
+    const useEffect = (callback, deps) => {
+      if (context.index === context.hooks.length) context.hooks.push({value: deps, callback, cleanup: null});
+      const hook = context.hooks[context.index++];
+      if (!hook.value || hook.value.some((dep, i) => dep != deps[i])) {
+        hook.value = deps;
+        hook.callback = callback;
+      }
+    };
+    const render = (vnode, dom) => {
+      const vlist = [].concat(vnode).map(v => v ? v : createTextElement(""))
+      const ids = {};
+      const hooks = dom.hooks ?? {};
+      dom.hooks = {};
+      vlist.forEach((v, i) => {
+        while (typeof v.type === "function") {
+          const key = v.props.key ?? (v.type + (ids[v.type] = (ids[v.type] ?? 1) + 1));
+          context = {hooks: hooks[key] ?? [], index: 0, update: () => render(vlist, dom)};
+          v = v.type(v.props);
+          dom.hooks[key] = context.hooks;
+        }
+        if (v.type === "style") {
+          const style = document.head.getElementsByTagName("style")[0] ?? document.head.appendChild(document.createElement("style"));
+          style.textContent = v.props.children.reduce((acc, child) => acc + child.props.nodeValue, "");
+          v = createTextElement("");
+        }
+        let node = dom.childNodes[i];
+        if (!node || node._type !== v.type) node = dom.insertBefore(v.type === "TEXT_ELEMENT" ? document.createTextNode("") : document.createElement(v.type), node ?? null);
+        node._type = v.type;
+        Object.keys(v.props).forEach(prop => {
+          if (prop === "children") return;
+          if (prop.startsWith("on")) {
+            node[prop.toLowerCase()] = v.props[prop];
+            return;
+          }
+          node[prop] = v.props[prop];
+        });
+        if (node._type === "select" && node.defaultValue) {
+          v.props.children = v.props.children.map(child => child.type === "option" && child.props.value === node.defaultValue ? ({...child, props: {...child.props, selected: true}}) : child);
+          node.defaultValue = undefined;
+        }
+        render(v.props.children, node);
+      });
+      Object.values(dom.hooks).forEach(hooks => hooks.forEach(hook => setTimeout(() => { hook.callback && ((hook.cleanup = hook.callback()), hook.callback = null); }, 0)));
+      Object.keys(hooks).filter(key => !dom.hooks[key]).forEach(key => hooks[key].forEach(hook => hook.cleanup && hook.cleanup()));
+      for (let child; (child = dom.childNodes[vlist.length]); )
+        render([], dom.removeChild(child));
+    };
 
     const DB = (() => {
-      const dbchange = new CustomEvent("dbchange");
+      const ondbchange = new CustomEvent("ondbchange");
       const inner = new Promise((resolve, reject) => {
         const request = indexedDB.open("stonkla", 1);
         request.onsuccess = e => resolve(e.target.result);
@@ -20,386 +76,286 @@
           const db = e.target.result;
           if (db.version >= 1) {
             const store = db.createObjectStore("trades", {keyPath: "id", autoIncrement: true});
+            store.createIndex("symbol", "symbol");
             store.createIndex("executions", "executions");
             store.createIndex("tags", "tags");
           }
         };
       });
       return {
-        add: (store, value) => {
-          inner.then(db => db.transaction(store, "readwrite").objectStore(store).add(value));
-          document.dispatchEvent(dbchange);
-        },
-        put: (store, value) => {
-          inner.then(db => db.transaction(store, "readwrite").objectStore(store).put(value));
-          document.dispatchEvent(dbchange);
-        },
-        delete: (store, id) => {
-          inner.then(db => db.transaction(store, "readwrite").objectStore(store).delete(id));
-          document.dispatchEvent(dbchange);
-        },
-        bulkAdd: (store, values) => {
-          inner.then(db => {
-            const transaction = db.transaction(store, "readwrite");
-            values.forEach(value => transaction.objectStore(store).add(value));
-          });
-          document.dispatchEvent(dbchange);
-        },
-        clear: store => {
-          inner.then(db => db.transaction(store, "readwrite").objectStore(store).clear());
-          document.dispatchEvent(dbchange);
-        },
-        get: (store, id) => new Promise((resolve, reject) => {
-          inner.then(db => {
-            const request = db.transaction(store).objectStore(store).get(id);
-            request.onsuccess = e => resolve(e.target.result ?? null);
-            request.onerror = e => reject(e.target.error);
-          });
-        }),
-        getAll: store => new Promise((resolve, reject) => {
-          inner.then(db => {
-            const request = db.transaction(store).objectStore(store).getAll();
-            request.onsuccess = e => resolve(e.target.result ?? []);
-            request.onerror = e => reject(e.target.error);
-          });
-        }),
+        add: (store, value) => inner.then(db => db.transaction(store, "readwrite").objectStore(store).add(value)).then(() => document.dispatchEvent(ondbchange)),
+        bulkAdd: (store, values) => inner.then(db => { const tx = db.transaction(store, "readwrite").objectStore(store); values.forEach(value => tx.add(value)); return tx; }).then(() => document.dispatchEvent(ondbchange)),
+        put: (store, value) => inner.then(db => db.transaction(store, "readwrite").objectStore(store).put(value)).then(() => document.dispatchEvent(ondbchange)),
+        delete: (store, id) => inner.then(db => db.transaction(store, "readwrite").objectStore(store).delete(id)).then(() => document.dispatchEvent(ondbchange)),
+        clear: store => inner.then(db => db.transaction(store, "readwrite").objectStore(store).clear()).then(() => document.dispatchEvent(ondbchange)),
+        get: (store, id) => inner.then(db => db.transaction(store).objectStore(store).get(id)),
+        getAll: store => inner.then(db => db.transaction(store).objectStore(store).getAll()),
       };
     })();
 
     const TRANSLATIONS = {
       "en": {
         "translation-name": "English",
-        "app-add-trade": "Add Trade",
-        "app-import-export-trades": "Import/Export",
-        "app-privacy-notice": `NOTICE: Your data is private and I don't want it. This app uses IndexedDB to store trades locally in your browser. Please make regular backups using the "Export to CSV" feature. Breaking changes to the site may occur without notice. Storing your data offline is the safest way to use this site.`,
-        "app-made-with-love": "Made with ❤️ by Dfra",
-        "app-sponsor-link": "Sponsor on GitHub",
+        "app-add-trade-button": "Add Trade",
+        "app-import-export-button": "Import/Export",
+        "app-open-settings-button": "Settings",
+        "app-made-with-love-text": "Made with ❤️ by Dfra",
+        "app-sponsor-on-github-link": "Sponsor on GitHub",
+        "app-settings-header": "Settings",
+        "app-settings-close-button": "Close",
         "app-settings-locale-label": "Locale:",
         "app-settings-theme-label": "Theme:",
         "app-settings-currency-label": "Currency:",
-        "app-settings-remove-all-trades": "Remove All Trades",
+        "app-settings-remove-all-trades-button": "Remove All Trades",
         "app-settings-remove-all-trades-confirm": "Are you sure you want to remove all trades?",
-        "trade-import-export-csv-type-select": "CSV Type:",
-        "trade-import-export-import-button": "Import from CSV",
-        "trade-import-export-export-button": "Export to CSV",
+        "trade-import-export-header": "Import/Export",
         "trade-import-export-close-button": "Close",
-        "trade-entry-symbol-input": "Symbol:",
-        "trade-entry-tags-input": "Tags:",
-        "trade-entry-buy-button": "BUY",
-        "trade-entry-sell-button": "SELL",
-        "trade-entry-time-input": "Time:",
-        "trade-entry-quantity-input": "Quantity:",
-        "trade-entry-price-input": "Price:",
-        "trade-entry-fees-input": "Fees:",
+        "trade-import-export-import-from-csv": "Import from CSV",
+        "trade-import-export-export-to-csv-button": "Export to CSV",
+        "trade-entry-header": "Trade Entry",
+        "trade-entry-close-button": "Close",
+        "trade-entry-symbol-label": "Symbol:",
         "trade-entry-symbol-placeholder": "Symbol",
+        "trade-entry-tags-label": "Tags:",
         "trade-entry-tags-placeholder": "Tags",
-        "trade-entry-time-placeholder": "Time",
+        "trade-entry-add-execution-button": "Add Execution",
+        "trade-entry-save-button": "Save",
+        "trade-entry-remove-execution-button": "Remove",
+        "trade-entry-action-buy-button": "BUY",
+        "trade-entry-action-sell-button": "SELL",
+        "trade-entry-time-label": "Time:",
+        "trade-entry-quantity-label": "Quantity:",
         "trade-entry-quantity-placeholder": "Quantity",
+        "trade-entry-price-label": "Price:",
         "trade-entry-price-placeholder": "Price",
+        "trade-entry-fees-label": "Fees:",
         "trade-entry-fees-placeholder": "Fees",
-        "trade-entry-add-execution": "Add Execution",
-        "trade-entry-delete-execution": "Remove",
-        "trade-entry-save": "Save",
-        "trade-entry-cancel": "Cancel",
-        "trade-table-time": "Time",
-        "trade-table-symbol": "Symbol",
-        "trade-table-status": "Status",
-        "trade-table-entry-total": "Entry Total",
-        "trade-table-exit-total": "Exit Total",
-        "trade-table-net-pl": "Net P/L",
-        "trade-table-tags": "Tags",
-        "trade-table-edit": "Edit",
-        "trade-table-remove": "Remove",
-        "trade-table-status-win": "WIN",
-        "trade-table-status-loss": "LOSS",
-        "trade-stats-total-profit-loss": "Total Profit/Loss",
-        "trade-stats-win-count": "Win Count",
-        "trade-stats-loss-count": "Loss Count",
-        "trade-stats-total-trades": "Total Trades",
-        "trade-stats-win-percentage": "Win Percentage",
-        "trade-stats-largest-win": "Largest Win",
-        "trade-stats-largest-loss": "Largest Loss",
-        "trade-stats-average-win": "Average Win",
-        "trade-stats-average-loss": "Average Loss",
-      },
-      "es": {
-        "translation-name": "Español",
-        "app-add-trade": "Añadir Operación",
-        "app-import-export-trades": "Importación/exportación",
-        "app-privacy-notice": `AVISO: Tus datos son privados y no los quiero. Esta aplicación utiliza IndexedDB para almacenar operaciones localmente en tu navegador. Por favor, haz copias de seguridad regulares utilizando la función "Exportar a CSV". Cambios en el sitio pueden ocurrir sin previo aviso. Almacenar tus datos sin conexión es la forma más segura de usar este sitio.`,
-        "app-made-with-love": "Hecho con ❤️ por Dfra",
-        "app-sponsor-link": "Patrocinar en GitHub",
-        "app-settings-locale-label": "Lugar:",
-        "app-settings-theme-label": "Tema:",
-        "app-settings-currency-label": "Divisa:",
-        "app-settings-remove-all-trades": "Eliminar Todas las Operaciones",
-        "app-settings-remove-all-trades-confirm": "¿Estás seguro de que quieres eliminar todas las operaciones?",
-        "trade-import-export-csv-type-select": "Tipo de CSV:",
-        "trade-import-export-import-button": "Importar desde CSV",
-        "trade-import-export-export-button": "Exportar a CSV",
-        "trade-import-export-close-button": "Cerca",
-        "trade-entry-symbol-input": "Símbolo:",
-        "trade-entry-tags-input": "Etiquetas:",
-        "trade-entry-buy-button": "COMPRA",
-        "trade-entry-sell-button": "VENTA",
-        "trade-entry-time-input": "Hora:",
-        "trade-entry-quantity-input": "Cantidad:",
-        "trade-entry-price-input": "Precio:",
-        "trade-entry-fees-input": "Comisiones:",
-        "trade-entry-symbol-placeholder": "Símbolo",
-        "trade-entry-tags-placeholder": "Etiquetas",
-        "trade-entry-time-placeholder": "Hora",
-        "trade-entry-quantity-placeholder": "Cantidad",
-        "trade-entry-price-placeholder": "Precio",
-        "trade-entry-fees-placeholder": "Comisiones",
-        "trade-entry-add-execution": "Añadir Ejecución",
-        "trade-entry-delete-execution": "Eliminar",
-        "trade-entry-save": "Guardar",
-        "trade-entry-cancel": "Cancelar",
-        "trade-table-time": "Hora",
-        "trade-table-symbol": "Símbolo",
-        "trade-table-status": "Estado",
-        "trade-table-entry-total": "Total de Entrada",
-        "trade-table-exit-total": "Total de Salida",
-        "trade-table-net-pl": "P/L Neto",
-        "trade-table-tags": "Etiquetas",
-        "trade-table-edit": "Editar",
-        "trade-table-remove": "Eliminar",
-        "trade-table-status-win": "GANANCIA",
-        "trade-table-status-loss": "PÉRDIDA",
-        "trade-stats-total-profit-loss": "Total de Ganancias/Pérdidas",
-        "trade-stats-win-count": "Conteo de Ganancias",
-        "trade-stats-loss-count": "Conteo de Pérdidas",
-        "trade-stats-total-trades": "Total de Operaciones",
-        "trade-stats-win-percentage": "Porcentaje de Ganancias",
-        "trade-stats-largest-win": "Mayor Ganancia",
-        "trade-stats-largest-loss": "Mayor Pérdida",
-        "trade-stats-average-win": "Promedio de Ganancias",
-        "trade-stats-average-loss": "Promedio de Pérdidas",
+        "trade-table-time-header": "Time",
+        "trade-table-symbol-header": "Symbol",
+        "trade-table-entry-total-header": "Entry Total",
+        "trade-table-exit-total-header": "Exit Total",
+        "trade-table-net-profit-loss-header": "Net P/L",
+        "trade-table-tags-header": "Tags",
+        "trade-table-edit-header": "Edit",
+        "trade-table-remove-header": "Remove",
+        "trade-table-edit-button": "Edit",
+        "trade-table-remove-button": "Remove",
       },
     };
-    console.assert(Object.keys(TRANSLATIONS).every(l => Object.keys(TRANSLATIONS[l]).reduce((acc, key, i) => acc && key === Object.keys(TRANSLATIONS[Object.keys(TRANSLATIONS)[0]])[i])), "All locales must have the same keys.");
 
     const THEMES = {
-      "suisei-dark": {
-        "background-primary": "#3b4a62",
-        "background-secondary": "lightgray",
-        "text-primary": "#dbdeeb",
-        "text-secondary": "#affaff",
-        "accent": "#fe9841",
-      },
       "suisei-light": {
         "background-primary": "#c4b59d",
-        "background-secondary": "gray",
+        "background-secondary": "#3b4a62",
         "text-primary": "#242114",
         "text-secondary": "#500500",
         "accent": "#0167be",
       },
+      "suisei-dark": {
+        "background-primary": "#3b4a62",
+        "background-secondary": "#c4b59d",
+        "text-primary": "#dbdeeb",
+        "text-secondary": "#affaff",
+        "accent": "#fe9841",
+      },
     };
-    console.assert(Object.keys(THEMES).every(t => Object.keys(THEMES[t]).reduce((acc, key, i) => acc && key === Object.keys(THEMES[Object.keys(THEMES)[0]])[i]), "All themes must have the same keys."));
-
-    const offsetDate = date => new Date(date - new Date().getTimezoneOffset() * 60 * 1000);
 
     const currentMinute = () => {
-      const date = offsetDate(new Date());
+      const date = new Date(new Date() - new Date().getTimezoneOffset() * 60 * 1000);
       date.setSeconds(0, 0);
       return date.toISOString().slice(0, -1);
     };
-
-    const downloadTextFile = (type, filename, text) => {
-      const blob = new Blob([text], {type});
+    const downloadTextFile = (type, name, text) => {
+      const blob = new Blob([text], {type})
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      [a.href, a.download] = [url, filename];
+      [a.download, a.href] = [name, url];
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
     };
+    const prepareTrade = trade => {
+      return {
+        ...trade,
+        executions: trade.executions.map(execution => ({
+          ...execution,
+          quantity: parseFloat(execution.quantity),
+          price: parseFloat(execution.price),
+          fees: parseFloat(execution.fees),
+        })),
+        tags: trade.tags.filter(tag => tag !== ""),
+      }
+    };
 
-    const prepareTrade = trade => ({
-      ...trade,
-      executions: trade.executions.map(execution => ({
-        ...execution,
-        time: new Date(execution.time).toISOString().slice(0, -1),
-        quantity: parseFloat(execution.quantity),
-        price: parseFloat(execution.price),
-        fees: parseFloat(execution.fees),
-      })),
-      tags: trade.tags.filter(tag => tag !== ""),
-    });
-
-    const LocaleContext = createContext(null);
-    const ThemeContext = createContext(null);
-    const CurrencyContext = createContext(null);
-
-    const TradeTable = ({trades, setTrades, editTrade}) => {
-      const {T, locale} = useContext(LocaleContext);
-      const {C} = useContext(CurrencyContext);
-
-      useEffect(() => {
-        const handler = () => DB.getAll("trades").then(trades => setTrades(trades));
-        handler();
-        document.addEventListener("dbchange", handler);
-        return () => document.removeEventListener("dbchange", handler);
-      }, []);
-
-      const entryTotal = trade => trade.executions.reduce((acc, execution) => acc + (execution.quantity * execution.price + execution.fees) * (execution.action === "BUY"), 0);
-      const exitTotal = trade => trade.executions.reduce((acc, execution) => acc + (execution.quantity * execution.price - execution.fees) * (execution.action === "SELL"), 0);
+    const TradeTable = ({T, locale, C, trades, setTrades, editTrade, removeTrade}) => {
+      const entryTotal = trade => trade.executions.filter(execution => execution.action === "BUY").reduce((acc, execution) => acc + execution.quantity * execution.price + execution.fees, 0);
+      const exitTotal = trade => trade.executions.filter(execution => execution.action === "SELL").reduce((acc, execution) => acc + execution.quantity * execution.price - execution.fees, 0);
 
       return (
-        h("div", {class: "overflow-auto"},
-          h("table", null,
-            h("thead", null,
-              h("tr", null,
-                h("th", null, T("trade-table-time")),
-                h("th", null, T("trade-table-symbol")),
-                h("th", null, T("trade-table-status")),
-                h("th", null, T("trade-table-entry-total")),
-                h("th", null, T("trade-table-exit-total")),
-                h("th", null, T("trade-table-net-pl")),
-                h("th", null, T("trade-table-tags")),
-                h("th", null, T("trade-table-edit")),
-                h("th", null, T("trade-table-remove")),
-              ),
+        h("table", null,
+          h("thead", null,
+            h("tr", null,
+              h("th", null, T("trade-table-time-header")),
+              h("th", null, T("trade-table-symbol-header")),
+              h("th", null, T("trade-table-entry-total-header")),
+              h("th", null, T("trade-table-exit-total-header")),
+              h("th", null, T("trade-table-net-profit-loss-header")),
+              h("th", null, T("trade-table-tags-header")),
+              h("th", null, T("trade-table-edit-header")),
+              h("th", null, T("trade-table-remove-header")),
             ),
-            h("tbody", null,
-              trades.map(trade => h("tr", {key: trade.id},
-                h("td", null, new Date(trade.executions[0].time).toLocaleString(locale)),
-                h("td", null, trade.symbol),
-                h("td", null, exitTotal(trade) - entryTotal(trade) >= 0.0 ? T("trade-table-status-win") : T("trade-table-status-loss")),
-                h("td", null, C(entryTotal(trade))),
-                h("td", null, C(exitTotal(trade))),
-                h("td", null, C(exitTotal(trade) - entryTotal(trade))),
-                h("td", null, trade.tags.join(";")),
-                h("td", null, h("button", {onClick: () => editTrade(trade)}, T("trade-table-edit"))),
-                h("td", null, h("button", {onClick: () => DB.delete("trades", trade.id)}, T("trade-table-remove"))),
-              )),
-            ),
-          )
+          ),
+          h("tbody", null,
+            trades.map(trade => h("tr", {key: trade.id},
+              h("td", null, new Date(trade.executions[0].time).toLocaleString(locale)),
+              h("td", null, trade.symbol),
+              h("td", null, C(entryTotal(trade))),
+              h("td", null, C(exitTotal(trade))),
+              h("td", null, C(exitTotal(trade) - entryTotal(trade))),
+              h("td", null, trade.tags.join(";")),
+              h("td", null, h("button", {onClick: () => editTrade(trade)}, T("trade-table-edit-button"))),
+              h("td", null, h("button", {onClick: () => removeTrade(trade)}, T("trade-table-remove-button"))),
+            )),
+          ),
         )
       );
     };
 
-    const TradeStats = ({trades}) => {
-      const {T, P} = useContext(LocaleContext);
-      const {C} = useContext(CurrencyContext);
-
-      const netProfitLosses = trades.map(trade => trade.executions.reduce((acc, execution) => acc + (execution.quantity * execution.price) * (execution.action === "BUY" ? -1 : 1) - execution.fees, 0));
-      const total = netProfitLosses.reduce((acc, net) => acc + net, 0);
+    const TradeStats = ({T, C, P, trades}) => {
+      const netProfitLosses = trades.map(trade => trade.executions.reduce((acc, execution) => acc + (execution.quantity * execution.price) * (execution.action === "BUY" ? -1 : 1) - execution.fees, 0.0));
       const wins = netProfitLosses.filter(net => net >= 0.0);
       const losses = netProfitLosses.filter(net => net < 0.0);
-      const largestWin = wins.reduce((acc, net) => Math.max(acc, net), 0);
-      const largestLoss = losses.reduce((acc, net) => Math.min(acc, net), 0);
-      const averageWin = wins.reduce((acc, net) => acc + net, 0) / (wins.length || 1);
-      const averageLoss = losses.reduce((acc, net) => acc + net, 0) / (losses.length || 1);
 
       return (
         h("div", null,
-          `${T("trade-stats-total-profit-loss")}: ${C(total)}`,
+          h("hr"),
+          `Total Profit/Loss: ${C(netProfitLosses.reduce((acc, net) => acc + net, 0.0))}`,
           h("br"),
-          `${T("trade-stats-win-count")}: ${wins.length}`,
+          `Total Trades: ${wins.length + losses.length}`,
           h("br"),
-          `${T("trade-stats-loss-count")}: ${losses.length}`,
+          `Total Wins: ${wins.length}`,
           h("br"),
-          `${T("trade-stats-total-trades")}: ${wins.length + losses.length}`,
+          `Total Losses: ${losses.length}`,
           h("br"),
-          `${T("trade-stats-win-percentage")}: ${P(wins.length / ((wins.length + losses.length) || 1))}`,
+          `Win Percentage: ${P(wins.length / ((wins.length + losses.length) || 1))}`,
           h("br"),
-          `${T("trade-stats-largest-win")}: ${C(largestWin)}`,
+          `Largest Win: ${C(wins.reduce((acc, win) => Math.max(acc, win), 0.0))}`,
           h("br"),
-          `${T("trade-stats-largest-loss")}: ${C(largestLoss)}`,
+          `Largest Loss: ${C(losses.reduce((acc, loss) => Math.min(acc, loss), 0.0))}`,
           h("br"),
-          `${T("trade-stats-average-win")}: ${C(averageWin)}`,
+          `Average Win: ${C(wins.reduce((acc, win) => acc + win, 0.0) / (wins.length || 1))}`,
           h("br"),
-          `${T("trade-stats-average-loss")}: ${C(averageLoss)}`,
+          `Average Loss: ${C(losses.reduce((acc, loss) => acc + loss, 0.0) / (losses.length || 1))}`,
+          h("hr"),
         )
       );
     };
 
-    const TradeImportExport = ({trades, closeSelf}) => {
-      const importFileRef = useRef(null);
-      const dialogRef = useRef(null);
-      const {T} = useContext(LocaleContext);
+    const TradeEntry = ({T, trade, setTrade, onSaveTrade, closeSelf}) => {
+      const addExecution = () => {
+        const executions = [...trade.executions];
+        executions.push({
+          action: executions.length > 0 && executions[executions.length - 1].action === "BUY" ? "SELL" : "BUY",
+          time: executions.length > 0 ? executions[executions.length - 1].time : currentMinute(),
+          quantity: "",
+          price: "",
+          fees: "0.00",
+        });
+        setTrade({...trade, executions});
+      };
+      const updateExecution = (i, value) => {
+        const executions = [...trade.executions];
+        Object.assign(executions[i], value);
+        setTrade({...trade, executions});
+      };
+      const removeExecution = i => {
+        const executions = [...trade.executions.slice(0, i), ...trade.executions.slice(i + 1)];
+        setTrade({...trade, executions});
+      };
+      const onSubmit = e => {
+        e.preventDefault();
+        onSaveTrade(trade);
+        closeSelf();
+      };
+
+      useEffect(() => {
+        document.getElementById("trade-entry-dialog").showModal();
+        return () => document.getElementById("trade-entry-dialog").close();
+      }, []);
+      useEffect(() => { if (trade.executions.length === 0) addExecution(); }, []);
+
+      return (
+        h("dialog", {id: "trade-entry-dialog", onCancel: closeSelf, onClose: closeSelf},
+          h("h2", null, T("trade-entry-header")),
+          h("button", {onClick: closeSelf}, T("trade-entry-close-button")),
+          h("form", {onSubmit},
+            h("label", {htmlFor: "trade-entry-symbol-input"}, T("trade-entry-symbol-label")),
+            h("input", {id: "trade-entry-symbol-input", type: "text", required: true, placeholder: T("trade-entry-symbol-placeholder"), value: trade.symbol, onInput: e => setTrade({...trade, symbol: e.target.value.toUpperCase()})}),
+            h("label", {htmlFor: "trade-entry-tags-input"}, T("trade-entry-tags-label")),
+            h("input", {id: "trade-entry-tags-input", type: "text", placeholder: T("trade-entry-tags-placeholder"), value: trade.tags.join(";"), onInput: e => setTrade({...trade, tags: e.target.value.replace(/,/g, "").split(";")})}),
+            trade.executions.map((execution, i) => h("div", null,
+              h("button", {type: "button", onClick: () => removeExecution(i), disabled: trade.executions.length === 1}, T("trade-entry-remove-execution-button")),
+              h("button", {type: "button", onClick: () => updateExecution(i, {...execution, action: execution.action === "BUY" ? "SELL" : "BUY"})}, execution.action === "BUY" ? T("trade-entry-action-buy-button") : T("trade-entry-action-sell-button")),
+              h("label", {htmlFor: "trade-entry-time-input" + i}, T("trade-entry-time-label")),
+              h("input", {id: "trade-entry-time-input" + i, type: "datetime-local", required: true, step: "1", value: execution.time, onInput: e => updateExecution(i, {time: e.target.value})}),
+              h("label", {htmlFor: "trade-entry-quantity-input" + i}, T("trade-entry-quantity-label")),
+              h("input", {id: "trade-entry-quantity-input" + i, type: "number", required: true, min: "0", step: "0.00001", placeholder: T("trade-entry-quantity-placeholder"), value: execution.quantity, onInput: e => updateExecution(i, {quantity: e.target.value})}),
+              h("label", {htmlFor: "trade-entry-price-input" + i}, T("trade-entry-price-label")),
+              h("input", {id: "trade-entry-price-input" + i, type: "number", required: true, min: "0", step: "0.00001", placeholder: T("trade-entry-price-placeholder"), value: execution.price, onInput: e => updateExecution(i, {price: e.target.value})}),
+              h("label", {htmlFor: "trade-entry-fees-input" + i}, T("trade-entry-fees-label")),
+              h("input", {id: "trade-entry-fees-input" + i, type: "number", required: true, step: "0.00001", placeholder: T("trade-entry-fees-placeholder"), value: execution.fees, onInput: e => updateExecution(i, {fees: e.target.value})}),
+            )),
+            h("button", {type: "button", onClick: addExecution}, T("trade-entry-add-execution-button")),
+            h("button", null, T("trade-entry-save-button")),
+          ),
+        )
+      );
+    };
+
+    const TradeImportExport = ({T, trades, closeSelf}) => {
       const [importType, setImportType] = useState("stonkla");
 
       const importCSV = e => {
         e.preventDefault();
-        const file = importFileRef.current.files[0];
+        const files = document.getElementById("trade-import-export-files").files;
         const reader = new FileReader();
         reader.onload = e => {
-          let newTrades = [];
-          if (importType === "stonkla") {
-            const rows = e.target.result.split("\n").slice(1).filter(line => line !== "").map(line => line.split(","));
-            for (let i = 0; i < rows.length; ) {
-              const [start_id, symbol, tags] = [...rows[i].slice(0, 2), rows[i][7].split(";")];
-              const executions = [];
-              while (i < rows.length) {
-                let [id, _symbol, action, time, quantity, price, fees, _tags] = rows[i];
-                if (id !== start_id) break;
-                executions.push({action, time, quantity, price, fees});
-                i += 1;
+          const lines = e.target.result.split("\n").filter(line => line !== "");
+          const headers = lines[0].split(",");
+          const rows = lines.slice(1).map(line => line.split(",")).map(values => Object.fromEntries(values.map((value, i) => [headers[i], value])));
+          switch (importType) {
+            case "stonkla": {
+              let newTrades = [];
+              let rowIndex = 0;
+              while (rowIndex < rows.length) {
+                const [startId, symbol] = [rows[rowIndex].id, rows[rowIndex].symbol];
+                const executions = [];
+                const tags = rows[rowIndex].tags.split(";");
+                while (rowIndex < rows.length) {
+                  const {id, action, time, quantity, price, fees} = rows[rowIndex];
+                  if (id !== startId) break;
+                  executions.push({action, time, quantity, price, fees});
+                  rowIndex += 1;
+                }
+                newTrades.push(prepareTrade({symbol, executions, tags}));
               }
-              newTrades.push(prepareTrade({symbol, executions, tags}));
+              DB.bulkAdd("trades", newTrades);
+              break;
             }
-          } else if (importType === "lightspeed") {
-            const lines = e.target.result.split("\n");
-            const headers = lines[0].split(",");
-            const rows = lines.slice(1).filter(line => line !== "").map(line => line.split(","));
-            const data = rows.map(row => Object.fromEntries(row.map((value, i) => [headers[i], value])));
-            for (let i = 0; i < data.length; ) {
-              const get = key => data[i][`"${key}"`].slice(1, -1).trim();
-              const start_symbol = get("Symbol");
-              const tags = ["Lightspeed"];
-              const executions = [];
-              while (i < data.length) {
-                const [symbol, action, time, quantity, price, fees] = [
-                  get("Symbol"),
-                  get("Side") === "B" ? "BUY" : "SELL",
-                  offsetDate(new Date(get("Raw Exec. Time"))),
-                  Math.abs(parseFloat(get("Qty"))),
-                  get("Price"),
-                  parseFloat(get("Commission Amount")) + parseFloat(get("Fee1")) + parseFloat(get("Fee2")) + parseFloat(get("Fee3")) + parseFloat(get("Fee4")) + parseFloat(get("FeeMF")) + parseFloat(get("FeeSEC")) + parseFloat(get("FeeStamp")) + parseFloat(get("FeeTAF")),
-                ];
-                if (symbol !== start_symbol) break;
-                executions.push({action, time, quantity, price, fees});
-                i += 1;
-              }
-              newTrades.push(prepareTrade({symbol: start_symbol, executions, tags}));
+            case "lightspeed": {
+              break;
             }
-          } else if (importType === "webull") {
-            const lines = e.target.result.split("\n");
-            const headers = lines[0].split(",");
-            const rows = lines.slice(1).filter(line => line !== "").map(line => line.split(","));
-            const data = rows.map(row => Object.fromEntries(row.map((value, i) => [headers[i], value])));
-            const filtered = data.filter(item => item["Status"] === "Filled");
-            for (let i = 0; i < filtered.length; ) {
-              const get = key => filtered[i][key];
-              const start_symbol = get("Symbol");
-              const tags = ["Webull"];
-              const executions = [];
-              while (i < filtered.length) {
-                const [symbol, action, time, quantity, price, fees] = [
-                  get("Symbol"),
-                  get("Side") === "Buy" ? "BUY" : "SELL",
-                  offsetDate(new Date(get("Placed Time"))),
-                  Math.abs(parseFloat(get("Filled"))),
-                  get("Price").slice(1),
-                  get("Side") === "Sell" ? 0.02 : 0.0,
-                ];
-                if (symbol !== start_symbol) break;
-                executions.push({action, time, quantity, price, fees});
-                i += 1;
-              }
-              executions.reverse();
-              newTrades.push(prepareTrade({symbol: start_symbol, executions, tags}));
+            case "webull": {
+              break;
             }
-            newTrades.reverse()
+            default: {
+              console.error(`Import type ${importType} not implemented.`);
+              break;
+            }
           }
-          DB.bulkAdd("trades", newTrades)
         };
-        reader.readAsText(file);
+        reader.readAsText(files[0]);
       };
-
       const exportCSV = () => {
         let result = "id,symbol,action,time,quantity,price,fees,tags\n";
         for (const trade of trades) {
@@ -417,125 +373,52 @@
         downloadTextFile("text/csv", "trades.csv", result);
       };
 
-      const onKeyDown = ev => {
-        if (ev.key === "Escape") closeSelf();
-      };
-
       useEffect(() => {
-        dialogRef.current?.showModal();
-        return () => dialogRef.current?.close();
+        document.getElementById("trade-import-export-dialog").showModal();
+        return () => document.getElementById("trade-import-export-dialog").close();
       }, []);
 
       return (
-        h("dialog", {ref: dialogRef, onKeyDown},
-          h("form", {onSubmit: importCSV},
-            h("label", {for: "trade-import-export-csv-type-select"}, T("trade-import-export-csv-type-select")),
-            h("select", {id: "trade-import-export-csv-type-select", value: importType, onChange: e => setImportType(e.target.value)},
-              h("option", {value: "stonkla"}, "Stonkla"),
-              h("option", {value: "lightspeed"}, "Lightspeed"),
-              h("option", {value: "webull"}, "Webull"),
-            ),
-            h("input", {ref: importFileRef, type: "file", required: true}),
-            h("button", null, T("trade-import-export-import-button")),
-          ),
-          h("button", {onClick: exportCSV}, T("trade-import-export-export-button")),
+        h("dialog", {id: "trade-import-export-dialog", onCancel: closeSelf, onClose: closeSelf},
+          h("h2", null, T("trade-import-export-header")),
           h("button", {onClick: closeSelf}, T("trade-import-export-close-button")),
+          h("form", {onSubmit: importCSV},
+            h("select", {defaultValue: importType, onChange: e => setImportType(e.target.value)},
+              h("option", {value: "stonkla"}, "Stonkla"),
+              // h("option", {value: "lightspeed"}, "Lightspeed"),
+              // h("option", {value: "webull"}, "Webull"),
+            ),
+            h("input", {id: "trade-import-export-files", type: "file", required: true}),
+            h("button", null, T("trade-import-export-import-from-csv")),
+          ),
+          h("button", {onClick: exportCSV}, T("trade-import-export-export-to-csv-button")),
         )
       );
     };
 
-    const TradeEntry = ({trade, setTrade, onSave, closeSelf}) => {
-      const {T} = useContext(LocaleContext);
-      const dialogRef = useRef(null);
-
-      const addExecution = () => {
-        const executions = [...trade.executions];
-        executions.push({
-          action: executions.length !== 0 && executions[executions.length - 1].action === "BUY" ? "SELL" : "BUY",
-          time: executions.length !== 0 ? executions[executions.length - 1].time : currentMinute(),
-          quantity: executions.length !== 0 ? executions[executions.length - 1].quantity : "",
-          price: executions.length !== 0 ? executions[executions.length - 1].price : "",
-          fees: executions.length !== 0 ? executions[executions.length - 1].fees : "",
-        });
-        setTrade({...trade, executions});
-      };
-
-      const updateExecution = (i, value) => {
-        const executions = [...trade.executions];
-        Object.assign(executions[i], value);
-        setTrade({...trade, executions});
-      };
-
-      const deleteExecution = i => {
-        const executions = [...trade.executions.slice(0, i), ...trade.executions.slice(i + 1)];
-        setTrade({...trade, executions});
-      };
-
-      const onSubmit = e => {
-        e.preventDefault();
-        onSave(trade);
-        closeSelf();
-      };
-
-      const onKeyDown = ev => {
-        if (ev.key === "Escape") closeSelf();
-      };
-
-      useEffect(() => { if (trade.executions.length === 0) addExecution(); }, []);
+    const AppSettings = ({T, locale, setLocale, theme, setTheme, currency, setCurrency, closeSelf}) => {
       useEffect(() => {
-        dialogRef.current?.showModal();
-        return () => dialogRef.current?.close();
+        document.getElementById("app-settings-dialog").showModal();
+        return () => document.getElementById("app-settings-dialog").close();
       }, []);
 
       return (
-        h("dialog", {ref: dialogRef, onKeyDown},
-          h("form", {onSubmit},
-            h("div", null,
-              h("label", {for: "trade-entry-symbol-input"}, T("trade-entry-symbol-input")),
-              h("input", {id: "trade-entry-symbol-input", type: "text", required: true, placeholder: T("trade-entry-symbol-placeholder"), value: trade.symbol, onInput: e => setTrade({...trade, symbol: e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 5)})}),
-              h("label", {for: "trade-entry-tags-input"}, T("trade-entry-tags-input")),
-              h("input", {id: "trade-entry-tags-input", type: "text", placeholder: T("trade-entry-tags-placeholder"), value: trade.tags.join(";"), onInput: e => setTrade({...trade, tags: e.target.value.replace(/,/g, "").split(";")})}),
-            ),
-            trade.executions.map((execution, i) => h("div", {key: i},
-              h("button", {type: "button", onClick: () => deleteExecution(i), disabled: trade.executions.length === 1}, T("trade-entry-delete-execution")),
-              h("button", {type: "button", onClick: () => updateExecution(i, {action: execution.action === "BUY" ? "SELL" : "BUY"})}, execution.action === "BUY" ? T("trade-entry-buy-button") : T("trade-entry-sell-button")),
-              h("label", {for: "trade-entry-time-input" + i}, T("trade-entry-time-input")),
-              h("input", {id: "trade-entry-time-input" + i, type: "datetime-local", required: true, step: "1", value: execution.time, onInput: e => updateExecution(i, {time: e.target.value})}),
-              h("label", {for: "trade-entry-quantity-input" + i}, T("trade-entry-quantity-input")),
-              h("input", {id: "trade-entry-quantity-input" + i, type: "number", required: true, placeholder: T("trade-entry-quantity-placeholder"), min: "0", step: "0.0001", value: execution.quantity, onInput: e => updateExecution(i, {quantity: e.target.value})}),
-              h("label", {for: "trade-entry-price-input" + i}, T("trade-entry-price-input")),
-              h("input", {id: "trade-entry-price-input" + i, type: "number", required: true, placeholder: T("trade-entry-price-placeholder"), min: "0", step: "0.0001", value: execution.price, onInput: e => updateExecution(i, {price: e.target.value})}),
-              h("label", {for: "trade-entry-fees-input" + i}, T("trade-entry-fees-input")),
-              h("input", {id: "trade-entry-fees-input" + i, type: "number", required: true, placeholder: T("trade-entry-fees-placeholder"), step: "0.0001", value: execution.fees, onInput: e => updateExecution(i, {fees: e.target.value})}),
-            )),
-            h("button", {type: "button", onClick: addExecution}, T("trade-entry-add-execution")),
-            h("button", null, T("trade-entry-save")),
+        h("dialog", {id: "app-settings-dialog", onCancel: closeSelf, onClose: closeSelf},
+          h("h2", null, T("app-settings-header")),
+          h("button", {onClick: closeSelf}, T("app-settings-close-button")),
+          h("label", {htmlFor: "app-settings-locale-select"}, T("app-settings-locale-label")),
+          h("select", {id: "app-settings-locale-select", defaultValue: locale, onChange: e => setLocale(e.target.value)},
+            Object.keys(TRANSLATIONS).map(locale => h("option", {key: locale, value: locale}, TRANSLATIONS[locale]["translation-name"])),
           ),
-          h("button", {onClick: closeSelf}, T("trade-entry-cancel")),
-        )
-      );
-    };
-
-    const AppSettings = () => {
-      const {T, locale, setLocale} = useContext(LocaleContext);
-      const {S, theme, setTheme} = useContext(ThemeContext);
-      const {C, currency, setCurrency} = useContext(CurrencyContext);
-
-      return (
-        h("div", null,
-          h("label", {for: "app-settings-locale-select"}, T("app-settings-locale-label")),
-          h("select", {id: "app-settings-locale-select", onChange: e => setLocale(e.target.value), value: locale},
-            Object.keys(TRANSLATIONS).map(l => h("option", {key: l, value: l}, TRANSLATIONS[l]["translation-name"])),
+          h("label", {htmlFor: "app-settings-theme-select"}, T("app-settings-theme-label")),
+          h("select", {id: "app-settings-theme-select", defaultValue: theme, onChange: e => setTheme(e.target.value)},
+            Object.keys(THEMES).map(theme => h("option", {key: theme, value: theme}, theme)),
           ),
-          h("label", {for: "app-settings-theme-select"}, T("app-settings-theme-label")),
-          h("select", {id: "app-settings-theme-select", onChange: e => setTheme(e.target.value), value: theme},
-            Object.keys(THEMES).map(t => h("option", {key: t, value: t}, t)),
+          h("label", {htmlFor: "app-settings-currency-select"}, T("app-settings-currency-label")),
+          h("select", {id: "app-settings-currency-select", defaultValue: currency, onChange: e => setCurrency(e.target.value)},
+            ["USD", "GBP", "EUR", "JPY", "CAD"].map(currency => h("option", {key: currency, value: currency}, currency)),
           ),
-          h("label", {for: "app-settings-currency-select"}, T("app-settings-currency-label")),
-          h("select", {id: "app-settings-currency-select", onChange: e => setCurrency(e.target.value), value: currency},
-            ["USD", "GBP", "EUR", "JPY", "CAD"].map(c => h("option", {key: c, value: c}, c)),
-          ),
-          h("button", {style: "color: red", onClick: () => confirm(T("app-settings-remove-all-trades-confirm")) && DB.clear("trades")}, T("app-settings-remove-all-trades")),
+          h("button", {style: "color: red", onClick: () => confirm(T("app-settings-remove-all-trades-confirm")) && DB.clear("trades")}, T("app-settings-remove-all-trades-button")),
         )
       );
     };
@@ -543,81 +426,92 @@
     const App = () => {
       const defaultLocale = localStorage.getItem("locale") ?? navigator.language.slice(0, 2);
       const defaultTheme = localStorage.getItem("theme") ?? "suisei-light";
-      const defaultCurrency = localStorage.getItem("currency") ?? "USD";
 
       const [locale, setLocale] = useState(defaultLocale in TRANSLATIONS ? defaultLocale : Object.keys(TRANSLATIONS)[0]);
       const [theme, setTheme] = useState(defaultTheme in THEMES ? defaultTheme : Object.keys(THEMES)[0]);
-      const [currency, setCurrency] = useState(defaultCurrency);
+      const [currency, setCurrency] = useState(localStorage.getItem("currency") ?? "USD");
+      const [showAppSettings, setShowAppSettings] = useState(false);
       const [showTradeEntry, setShowTradeEntry] = useState(false);
-      const [showImportExport, setShowImportExport] = useState(false);
-      const [tradeEntrySave, setTradeEntrySave] = useState(null);
+      const [showTradeImportExport, setShowTradeImportExport] = useState(false);
       const [editingTrade, setEditingTrade] = useState(null);
+      const [onSaveTrade, setOnSaveTrade] = useState(null);
       const [trades, setTrades] = useState([]);
 
-      const T = key => TRANSLATIONS[locale][key] ?? console.error(`Missing translation for key "${key}" in locale "${locale}".`);
-      const S = key => THEMES[theme][key] ?? console.error(`Missing style for key "${key}" in theme "${theme}".`);
+      const T = key => TRANSLATIONS[locale][key] ?? console.error(`Key "${key}" not found in locale "${locale}".`);
+      const S = key => THEMES[theme][key] ?? console.error(`Key "${key}" not found in theme "${theme}".`);
       const C = amount => new Intl.NumberFormat(locale, {style: "currency", currency}).format(amount);
-      const P = amount => new Intl.NumberFormat(locale, {style: "percent", maximumFractionDigits: 2}).format(amount);
+      const P = amount => new Intl.NumberFormat(locale, {style: "percent"}).format(amount);
+
+      const addTrade = () => {
+        setEditingTrade({
+          symbol: "",
+          executions: [],
+          tags: [],
+        });
+        setOnSaveTrade(() => trade => DB.add("trades", prepareTrade(trade)));
+        setShowTradeEntry(true);
+      };
+      const editTrade = trade => {
+        setEditingTrade(structuredClone(trade));
+        setOnSaveTrade(() => trade => DB.put("trades", prepareTrade(trade)));
+        setShowTradeEntry(true);
+      };
+      const removeTrade = trade => DB.delete("trades", trade.id);
 
       useEffect(() => localStorage.setItem("locale", locale), [locale]);
       useEffect(() => localStorage.setItem("theme", theme), [theme]);
       useEffect(() => localStorage.setItem("currency", currency), [currency]);
-
-      const newTrade = () => {
-        setEditingTrade({symbol: "", executions: [], tags: []});
-        setTradeEntrySave(() => trade => DB.add("trades", prepareTrade(trade)));
-        setShowTradeEntry(true);
-      };
-
-      const editTrade = trade => {
-        setEditingTrade(trade);
-        setTradeEntrySave(() => trade => DB.put("trades", prepareTrade(trade)));
-        setShowTradeEntry(true);
-      };
+      useEffect(() => {
+        const handler = () => DB.getAll("trades").then(request => (request.onsuccess = e => setTrades(e.target.result)));
+        handler();
+        document.addEventListener("ondbchange", handler);
+        return () => document.removeEventListener("ondbchange", handler);
+      }, []);
 
       return (
-        h(LocaleContext.Provider, {value: {T, P, locale, setLocale}},
-        h(ThemeContext.Provider, {value: {S, theme, setTheme}},
-        h(CurrencyContext.Provider, {value: {C, currency, setCurrency}},
+        h("div", null,
           h("style", null, `
             body {
               font-family: Helvetica, Arial, sans-serif;
               background-color: ${S("background-primary")};
               color: ${S("text-primary")};
             }
+
             a { color: ${S("accent")}; }
 
-            .overflow-auto { overflow: auto; }
-
-            table { text-align: left; border-collapse: collapse; }
-            thead { border-block-end: 2px solid; }
-            th, td {
-              border: 1px solid ${S("background-secondary")};
-              padding: 0.15rem 0.25rem;
-              word-break: keep-all;
+            table {
+              border-collapse: collapse;
             }
-            tbody tr:nth-child(even) { background: color-mix(in srgb, ${S("background-secondary")}, transparent 80%); }
-            th { text-align: start; }
-            td { text-align: end; }
+
+            th, td {
+              padding: 3px;
+              border: 1px solid ${S("background-secondary")};
+            }
+
+            th {
+              text-align: start;
+              border-bottom: 2px solid ${S("background-secondary")};
+            }
+
+            td {
+              text-align: end;
+            }
           `),
           h("h1", null, "Stonkla"),
-          h(AppSettings),
-          h("div", null,
-            h("button", {onClick: newTrade}, T("app-add-trade")),
-            h("button", {onClick: () => setShowImportExport(true)}, T("app-import-export-trades")),
-          ),
-          showTradeEntry && h(TradeEntry, {trade: editingTrade, setTrade: setEditingTrade, onSave: tradeEntrySave, closeSelf: () => setShowTradeEntry(false)}),
-          showImportExport && h(TradeImportExport, {trades, closeSelf: () => setShowImportExport(false)}),
-          h(TradeStats, {trades}),
-          h(TradeTable, {trades, setTrades, editTrade}),
+          h("button", {onClick: addTrade}, T("app-add-trade-button")),
+          h("button", {onClick: () => setShowTradeImportExport(true)}, T("app-import-export-button")),
+          h("button", {onClick: () => setShowAppSettings(true)}, T("app-open-settings-button")),
+          showAppSettings && h(AppSettings, {T, locale, setLocale, theme, setTheme, currency, setCurrency, closeSelf: () => setShowAppSettings(false)}),
+          showTradeEntry && h(TradeEntry, {T, trade: editingTrade, setTrade: setEditingTrade, onSaveTrade, closeSelf: () => setShowTradeEntry(false)}),
+          showTradeImportExport && h(TradeImportExport, {T, trades, closeSelf: () => setShowTradeImportExport(false)}),
+          h(TradeStats, {T, C, P, trades}),
+          h(TradeTable, {T, locale, C, trades, setTrades, editTrade, removeTrade}),
           h("p", null,
-            T("app-privacy-notice"),
+            T("app-made-with-love-text"),
             h("br"),
-            T("app-made-with-love"),
-            h("br"),
-            h("a", {href: "https://github.com/sponsors/dawsonfrakes", target: "_blank"}, T("app-sponsor-link")),
+            h("a", {href: "https://github.com/sponsors/dawsonfrakes", target: "_blank"}, T("app-sponsor-on-github-link")),
           ),
-        )))
+        )
       );
     };
 

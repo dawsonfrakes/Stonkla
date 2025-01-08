@@ -157,14 +157,14 @@
     const THEMES = {
       "suisei-light": {
         "background-primary": "#c4b59d",
-        "background-secondary": "#3b4a62",
+        "background-secondary": "#b19d7d",
         "text-primary": "#242114",
         "text-secondary": "#500500",
         "accent": "#0167be",
       },
       "suisei-dark": {
         "background-primary": "#3b4a62",
-        "background-secondary": "#c4b59d",
+        "background-secondary": "#4e6282",
         "text-primary": "#dbdeeb",
         "text-secondary": "#affaff",
         "accent": "#fe9841",
@@ -548,7 +548,11 @@
             }
 
             .trade-stats span {
+              margin: 10px;
+              background-color: ${S("background-secondary")};
               padding: 10px;
+              border: 4px solid ${S("text-primary")};
+              border-radius: 4px;
             }
 
             .trade-table {
@@ -562,12 +566,12 @@
 
             th, td {
               padding: 3px;
-              border: 1px solid ${S("background-secondary")};
+              border: 2px solid ${S("text-primary")};
             }
 
             th {
               text-align: start;
-              border-bottom: 2px solid ${S("background-secondary")};
+              border-bottom: 3px solid ${S("text-primary")};
             }
 
             td {

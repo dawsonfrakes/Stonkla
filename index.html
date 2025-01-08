@@ -206,30 +206,32 @@
       const sortedTrades = [...trades].sort((a, b) => new Date(a.executions[0].time) - new Date(b.executions[0].time));
 
       return (
-        h("table", null,
-          h("thead", null,
-            h("tr", null,
-              h("th", null, T("trade-table-time-header")),
-              h("th", null, T("trade-table-symbol-header")),
-              h("th", null, T("trade-table-entry-total-header")),
-              h("th", null, T("trade-table-exit-total-header")),
-              h("th", null, T("trade-table-net-profit-loss-header")),
-              h("th", null, T("trade-table-tags-header")),
-              h("th", null, T("trade-table-edit-header")),
-              h("th", null, T("trade-table-remove-header")),
+        h("div", {className: "trade-table"},
+          h("table", null,
+            h("thead", null,
+              h("tr", null,
+                h("th", null, T("trade-table-time-header")),
+                h("th", null, T("trade-table-symbol-header")),
+                h("th", null, T("trade-table-entry-total-header")),
+                h("th", null, T("trade-table-exit-total-header")),
+                h("th", null, T("trade-table-net-profit-loss-header")),
+                h("th", null, T("trade-table-tags-header")),
+                h("th", null, T("trade-table-edit-header")),
+                h("th", null, T("trade-table-remove-header")),
+              ),
             ),
-          ),
-          h("tbody", null,
-            sortedTrades.map(trade => h("tr", {key: trade.id},
-              h("td", null, new Date(trade.executions[0].time).toLocaleString(locale)),
-              h("td", null, trade.symbol),
-              h("td", null, C(entryTotal(trade))),
-              h("td", null, C(exitTotal(trade))),
-              h("td", null, C(exitTotal(trade) - entryTotal(trade))),
-              h("td", null, trade.tags.join(";")),
-              h("td", null, h("button", {onClick: () => editTrade(trade)}, T("trade-table-edit-button"))),
-              h("td", null, h("button", {onClick: () => removeTrade(trade)}, T("trade-table-remove-button"))),
-            )),
+            h("tbody", null,
+              sortedTrades.map(trade => h("tr", {key: trade.id},
+                h("td", null, new Date(trade.executions[0].time).toLocaleString(locale)),
+                h("td", null, trade.symbol),
+                h("td", null, C(entryTotal(trade))),
+                h("td", null, C(exitTotal(trade))),
+                h("td", null, C(exitTotal(trade) - entryTotal(trade))),
+                h("td", null, trade.tags.join(";")),
+                h("td", null, h("button", {onClick: () => editTrade(trade)}, T("trade-table-edit-button"))),
+                h("td", null, h("button", {onClick: () => removeTrade(trade)}, T("trade-table-remove-button"))),
+              )),
+            ),
           ),
         )
       );
@@ -241,30 +243,18 @@
       const losses = netProfitLosses.filter(net => net < 0.0);
 
       return (
-        h("div", null,
-          h("hr"),
-          `${T("trade-stats-total-profit-loss")}: ${C(netProfitLosses.reduce((acc, net) => acc + net, 0.0))}`,
-          h("br"),
-          `${T("trade-stats-total-fees")}: ${C(trades.reduce((acc, trade) => acc + trade.executions.reduce((acc2, execution) => (acc2 + execution.fees), 0.0), 0.0))}`,
-          h("br"),
-          `${T("trade-stats-total-trades")}: ${wins.length + losses.length}`,
-          h("br"),
-          `${T("trade-stats-total-wins")}: ${wins.length}`,
-          h("br"),
-          `${T("trade-stats-total-losses")}: ${losses.length}`,
-          h("br"),
-          `${T("trade-stats-win-percentage")}: ${P(wins.length / ((wins.length + losses.length) || 1))}`,
-          h("br"),
-          `${T("trade-stats-largest-win")}: ${C(wins.reduce((acc, win) => Math.max(acc, win), 0.0))}`,
-          h("br"),
-          `${T("trade-stats-largest-loss")}: ${C(losses.reduce((acc, loss) => Math.min(acc, loss), 0.0))}`,
-          h("br"),
-          `${T("trade-stats-average-trade")}: ${C(netProfitLosses.reduce((acc, net) => acc + net, 0.0) / (netProfitLosses.length || 1))}`,
-          h("br"),
-          `${T("trade-stats-average-win")}: ${C(wins.reduce((acc, win) => acc + win, 0.0) / (wins.length || 1))}`,
-          h("br"),
-          `${T("trade-stats-average-loss")}: ${C(losses.reduce((acc, loss) => acc + loss, 0.0) / (losses.length || 1))}`,
-          h("hr"),
+        h("div", {className: "trade-stats"},
+          h("span", null, `${T("trade-stats-total-profit-loss")}: ${C(netProfitLosses.reduce((acc, net) => acc + net, 0.0))}`),
+          h("span", null, `${T("trade-stats-total-fees")}: ${C(trades.reduce((acc, trade) => acc + trade.executions.reduce((acc2, execution) => (acc2 + execution.fees), 0.0), 0.0))}`),
+          h("span", null, `${T("trade-stats-total-trades")}: ${wins.length + losses.length}`),
+          h("span", null, `${T("trade-stats-total-wins")}: ${wins.length}`),
+          h("span", null, `${T("trade-stats-total-losses")}: ${losses.length}`),
+          h("span", null, `${T("trade-stats-win-percentage")}: ${P(wins.length / ((wins.length + losses.length) || 1))}`),
+          h("span", null, `${T("trade-stats-largest-win")}: ${C(wins.reduce((acc, win) => Math.max(acc, win), 0.0))}`),
+          h("span", null, `${T("trade-stats-largest-loss")}: ${C(losses.reduce((acc, loss) => Math.min(acc, loss), 0.0))}`),
+          h("span", null, `${T("trade-stats-average-trade")}: ${C(netProfitLosses.reduce((acc, net) => acc + net, 0.0) / (netProfitLosses.length || 1))}`),
+          h("span", null, `${T("trade-stats-average-win")}: ${C(wins.reduce((acc, win) => acc + win, 0.0) / (wins.length || 1))}`),
+          h("span", null, `${T("trade-stats-average-loss")}: ${C(losses.reduce((acc, loss) => acc + loss, 0.0) / (losses.length || 1))}`),
         )
       );
     };
@@ -539,7 +529,34 @@
 
             a { color: ${S("accent")}; }
 
+            nav {
+              display: flex;
+            }
+
+            nav * {
+              align-self: center;
+            }
+
+            .spacer {
+              flex-grow: 1;
+            }
+
+            .trade-stats {
+              display: flex;
+              flex-wrap: wrap;
+              justify-content: space-evenly;
+            }
+
+            .trade-stats span {
+              padding: 10px;
+            }
+
+            .trade-table {
+              overflow: auto;
+            }
+
             table {
+              overflow: auto;
               border-collapse: collapse;
             }
 
@@ -556,20 +573,28 @@
             td {
               text-align: end;
             }
+
+            footer {
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+            }
           `),
-          h("h1", null, "Stonkla"),
-          h("button", {onClick: addTrade}, T("app-add-trade-button")),
-          h("button", {onClick: () => setShowTradeImportExport(true)}, T("app-import-export-button")),
-          h("button", {onClick: () => setShowAppSettings(true)}, T("app-open-settings-button")),
+          h("nav", null,
+            h("h1", null, "Stonkla"),
+            h("div", {className: "spacer"}),
+            h("button", {onClick: addTrade}, T("app-add-trade-button")),
+            h("button", {onClick: () => setShowTradeImportExport(true)}, T("app-import-export-button")),
+            h("button", {onClick: () => setShowAppSettings(true)}, T("app-open-settings-button")),
+          ),
           showAppSettings && h(AppSettings, {T, locale, setLocale, theme, setTheme, currency, setCurrency, closeSelf: () => setShowAppSettings(false)}),
           showTradeEntry && h(TradeEntry, {T, trade: editingTrade, setTrade: setEditingTrade, onSaveTrade, closeSelf: () => setShowTradeEntry(false)}),
           showTradeImportExport && h(TradeImportExport, {T, trades, closeSelf: () => setShowTradeImportExport(false)}),
           h(TradeStats, {T, C, P, trades}),
           h(TradeTable, {T, locale, C, trades, setTrades, editTrade, removeTrade}),
-          h("p", null,
-            T("app-made-with-love-text"),
-            h("br"),
-            h("a", {href: "https://github.com/sponsors/dawsonfrakes", target: "_blank"}, T("app-sponsor-on-github-link")),
+          h("footer", null,
+            h("span", null, T("app-made-with-love-text")),
+            h("span", null, h("a", {href: "https://github.com/sponsors/dawsonfrakes", target: "_blank"}, T("app-sponsor-on-github-link"))),
           ),
         )
       );

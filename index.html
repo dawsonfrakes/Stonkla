@@ -311,11 +311,11 @@
               h("label", {htmlFor: "trade-entry-time-input" + i}, T("trade-entry-time-label")),
               h("input", {id: "trade-entry-time-input" + i, type: "datetime-local", required: true, step: "1", value: execution.time, onInput: e => updateExecution(i, {time: e.target.value})}),
               h("label", {htmlFor: "trade-entry-quantity-input" + i}, T("trade-entry-quantity-label")),
-              h("input", {id: "trade-entry-quantity-input" + i, type: "number", required: true, min: "0", step: "0.00001", placeholder: T("trade-entry-quantity-placeholder"), value: execution.quantity, onInput: e => updateExecution(i, {quantity: e.target.value})}),
+              h("input", {id: "trade-entry-quantity-input" + i, type: "text", required: true, placeholder: T("trade-entry-quantity-placeholder"), value: execution.quantity, onInput: e => updateExecution(i, {quantity: e.target.value})}),
               h("label", {htmlFor: "trade-entry-price-input" + i}, T("trade-entry-price-label")),
-              h("input", {id: "trade-entry-price-input" + i, type: "number", required: true, min: "0", step: "0.00001", placeholder: T("trade-entry-price-placeholder"), value: execution.price, onInput: e => updateExecution(i, {price: e.target.value})}),
+              h("input", {id: "trade-entry-price-input" + i, type: "text", required: true, placeholder: T("trade-entry-price-placeholder"), value: execution.price, onInput: e => updateExecution(i, {price: e.target.value})}),
               h("label", {htmlFor: "trade-entry-fees-input" + i}, T("trade-entry-fees-label")),
-              h("input", {id: "trade-entry-fees-input" + i, type: "number", required: true, step: "0.00001", placeholder: T("trade-entry-fees-placeholder"), value: execution.fees, onInput: e => updateExecution(i, {fees: e.target.value})}),
+              h("input", {id: "trade-entry-fees-input" + i, type: "text", required: true, placeholder: T("trade-entry-fees-placeholder"), value: execution.fees, onInput: e => updateExecution(i, {fees: e.target.value})}),
             )),
             h("button", {type: "button", onClick: addExecution}, T("trade-entry-add-execution-button")),
             h("button", null, T("trade-entry-save-button")),
@@ -558,13 +558,18 @@
               flex-grow: 1;
             }
 
-            button {
+            button, select, input, input[type=file]::file-selector-button {
+              color: ${S("text-primary")};
               background-color: ${S("background-primary")};
               border: 1px solid ${S("background-secondary")};
               border-radius: 1px;
             }
 
-            button:hover {
+            input::placeholder {
+              color: ${S("text-secondary")};
+            }
+
+            button:hover, input[type=file]::file-selector-button:hover {
               background-color: ${S("background-secondary")};
             }
 

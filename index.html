@@ -179,6 +179,7 @@
         ...trade,
         executions: trade.executions.map(execution => ({
           ...execution,
+          time: new Date(execution.time).toISOString().slice(0, -1),
           quantity: parseFloat(execution.quantity),
           price: parseFloat(execution.price),
           fees: parseFloat(execution.fees),
@@ -342,10 +343,31 @@
               DB.bulkAdd("trades", newTrades);
               break;
             }
-            case "lightspeed": {
-              break;
-            }
+            // case "lightspeed": {
+            //   break;
+            // }
             case "webull": {
+              const filteredRows = rows.filter(row => row.Status === "Filled");
+              let newTrades = [];
+              let rowIndex = 0;
+              while (rowIndex < filteredRows.length) {
+                const startSymbol = filteredRows[rowIndex].Symbol;
+                const executions = [];
+                const tags = ["Webull"];
+                while (rowIndex < filteredRows.length) {
+                  const symbol = filteredRows[rowIndex].Symbol;
+                  const action = filteredRows[rowIndex].Side === "Buy" ? "BUY" : "SELL";
+                  const time = filteredRows[rowIndex]["Placed Time"];
+                  const quantity = filteredRows[rowIndex].Filled;
+                  const price = filteredRows[rowIndex]["Avg Price"];
+                  const fees = filteredRows[rowIndex].Side === "Buy" ? 0 : 0.02;
+                  if (symbol != startSymbol) break;
+                  executions.push({action, time, quantity, price, fees});
+                  rowIndex += 1;
+                }
+                newTrades.push(prepareTrade({symbol: startSymbol, executions, tags}));
+              }
+              DB.bulkAdd("trades", newTrades);
               break;
             }
             default: {
@@ -386,7 +408,7 @@
             h("select", {defaultValue: importType, onChange: e => setImportType(e.target.value)},
               h("option", {value: "stonkla"}, "Stonkla"),
               // h("option", {value: "lightspeed"}, "Lightspeed"),
-              // h("option", {value: "webull"}, "Webull"),
+              h("option", {value: "webull"}, "Webull"),
             ),
             h("input", {id: "trade-import-export-files", type: "file", required: true}),
             h("button", null, T("trade-import-export-import-from-csv")),

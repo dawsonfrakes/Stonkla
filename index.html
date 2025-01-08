@@ -110,6 +110,7 @@
         "app-settings-remove-all-trades-confirm": "Are you sure you want to remove all trades?",
         "trade-import-export-header": "Import/Export",
         "trade-import-export-close-button": "Close",
+        "trade-import-export-csv-type-label": "CSV Type:",
         "trade-import-export-import-from-csv": "Import from CSV",
         "trade-import-export-export-to-csv-button": "Export to CSV",
         "trade-entry-header": "Trade Entry",
@@ -294,8 +295,11 @@
 
       return (
         h("dialog", {id: "trade-entry-dialog", onCancel: closeSelf, onClose: closeSelf},
-          h("h2", null, T("trade-entry-header")),
-          h("button", {onClick: closeSelf}, T("trade-entry-close-button")),
+          h("div", {className: "page-header"},
+            h("h2", null, T("trade-entry-header")),
+          h("div", {className: "spacer"}),
+            h("button", {onClick: closeSelf}, T("trade-entry-close-button")),
+          ),
           h("form", {onSubmit},
             h("label", {htmlFor: "trade-entry-symbol-input"}, T("trade-entry-symbol-label")),
             h("input", {id: "trade-entry-symbol-input", type: "text", required: true, placeholder: T("trade-entry-symbol-placeholder"), value: trade.symbol, onInput: e => setTrade({...trade, symbol: e.target.value.toUpperCase()})}),
@@ -430,10 +434,14 @@
 
       return (
         h("dialog", {id: "trade-import-export-dialog", onCancel: closeSelf, onClose: closeSelf},
-          h("h2", null, T("trade-import-export-header")),
-          h("button", {onClick: closeSelf}, T("trade-import-export-close-button")),
+          h("div", {className: "page-header"},
+            h("h2", null, T("trade-import-export-header")),
+            h("div", {className: "spacer"}),
+            h("button", {onClick: closeSelf}, T("trade-import-export-close-button")),
+          ),
           h("form", {onSubmit: importCSV},
-            h("select", {defaultValue: importType, onChange: e => setImportType(e.target.value)},
+            h("label", {htmlFor: "trade-import-export-csv-type-select"}, T("trade-import-export-csv-type-label")),
+            h("select", {id: "trade-import-export-csv-type-select", defaultValue: importType, onChange: e => setImportType(e.target.value)},
               h("option", {value: "stonkla"}, "Stonkla"),
               h("option", {value: "lightspeed"}, "Lightspeed"),
               h("option", {value: "webull"}, "Webull"),
@@ -454,8 +462,11 @@
 
       return (
         h("dialog", {id: "app-settings-dialog", onCancel: closeSelf, onClose: closeSelf},
-          h("h2", null, T("app-settings-header")),
-          h("button", {onClick: closeSelf}, T("app-settings-close-button")),
+          h("div", {className: "page-header"},
+            h("h2", null, T("app-settings-header")),
+            h("div", {className: "spacer"}),
+            h("button", {onClick: closeSelf}, T("app-settings-close-button")),
+          ),
           h("label", {htmlFor: "app-settings-locale-select"}, T("app-settings-locale-label")),
           h("select", {id: "app-settings-locale-select", defaultValue: locale, onChange: e => setLocale(e.target.value)},
             Object.keys(TRANSLATIONS).map(locale => h("option", {key: locale, value: locale}, TRANSLATIONS[locale]["translation-name"])),
@@ -521,7 +532,7 @@
       return (
         h("div", null,
           h("style", null, `
-            body {
+            body, dialog {
               font-family: Helvetica, Arial, sans-serif;
               background-color: ${S("background-primary")};
               color: ${S("text-primary")};
@@ -529,16 +540,32 @@
 
             a { color: ${S("accent")}; }
 
-            nav {
+            dialog {
+              display: flex;
+              flex-direction: column;
+            }
+
+            .page-header {
               display: flex;
             }
 
-            nav * {
+            .page-header * {
               align-self: center;
+              margin: 2px;
             }
 
             .spacer {
               flex-grow: 1;
+            }
+
+            button {
+              background-color: ${S("background-primary")};
+              border: 1px solid ${S("background-secondary")};
+              border-radius: 1px;
+            }
+
+            button:hover {
+              background-color: ${S("background-secondary")};
             }
 
             .trade-stats {
@@ -580,12 +607,13 @@
             }
 
             footer {
+              margin: 10px;
               display: flex;
               flex-direction: column;
               align-items: center;
             }
           `),
-          h("nav", null,
+          h("div", {className: "page-header"},
             h("h1", null, "Stonkla"),
             h("div", {className: "spacer"}),
             h("button", {onClick: addTrade}, T("app-add-trade-button")),

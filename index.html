@@ -326,7 +326,7 @@
           const rows = lines.slice(1).map(line => line.split(",")).map(values => Object.fromEntries(values.map((value, i) => [headers[i], value])));
           switch (importType) {
             case "stonkla": {
-              let newTrades = [];
+              const newTrades = [];
               let rowIndex = 0;
               while (rowIndex < rows.length) {
                 const [startId, symbol] = [rows[rowIndex].id, rows[rowIndex].symbol];
@@ -343,12 +343,33 @@
               DB.bulkAdd("trades", newTrades);
               break;
             }
-            // case "lightspeed": {
-            //   break;
-            // }
+            case "lightspeed": {
+              const newTrades = [];
+              let rowIndex = 0;
+              while (rowIndex < rows.length) {
+                const get = key => rows[rowIndex][`"${key}"`].slice(1, -1).trim();
+                const startSymbol = get("Symbol");
+                const executions = [];
+                const tags = ["Lightspeed"];
+                while (rowIndex < rows.length) {
+                  const symbol = get("Symbol");
+                  const action = get("Side") === "B" ? "BUY" : "SELL";
+                  const time = get("Raw Exec. Time");
+                  const quantity = Math.abs(get("Qty"));
+                  const price = get("Price");
+                  const fees = parseFloat(get("Commission Amount")) + parseFloat(get("Fee1")) + parseFloat(get("Fee2")) + parseFloat(get("Fee3")) + parseFloat(get("Fee4")) + parseFloat(get("FeeMF")) + parseFloat(get("FeeSEC")) + parseFloat(get("FeeStamp")) + parseFloat(get("FeeTAF"));
+                  if (symbol != startSymbol) break;
+                  executions.push({action, time, quantity, price, fees});
+                  rowIndex += 1;
+                }
+                newTrades.push(prepareTrade({symbol: startSymbol, executions, tags}));
+              }
+              DB.bulkAdd("trades", newTrades);
+              break;
+            }
             case "webull": {
               const filteredRows = rows.filter(row => row.Status === "Filled");
-              let newTrades = [];
+              const newTrades = [];
               let rowIndex = 0;
               while (rowIndex < filteredRows.length) {
                 const startSymbol = filteredRows[rowIndex].Symbol;
@@ -407,7 +428,7 @@
           h("form", {onSubmit: importCSV},
             h("select", {defaultValue: importType, onChange: e => setImportType(e.target.value)},
               h("option", {value: "stonkla"}, "Stonkla"),
-              // h("option", {value: "lightspeed"}, "Lightspeed"),
+              h("option", {value: "lightspeed"}, "Lightspeed"),
               h("option", {value: "webull"}, "Webull"),
             ),
             h("input", {id: "trade-import-export-files", type: "file", required: true}),
@@ -462,7 +483,7 @@
       const T = key => TRANSLATIONS[locale][key] ?? console.error(`Key "${key}" not found in locale "${locale}".`);
       const S = key => THEMES[theme][key] ?? console.error(`Key "${key}" not found in theme "${theme}".`);
       const C = amount => new Intl.NumberFormat(locale, {style: "currency", currency}).format(amount);
-      const P = amount => new Intl.NumberFormat(locale, {style: "percent"}).format(amount);
+      const P = amount => new Intl.NumberFormat(locale, {style: "percent", maximumFractionDigits: 2}).format(amount);
 
       const addTrade = () => {
         setEditingTrade({

@@ -203,6 +203,8 @@
       const entryTotal = trade => trade.executions.filter(execution => execution.action === "BUY").reduce((acc, execution) => acc + execution.quantity * execution.price + execution.fees, 0);
       const exitTotal = trade => trade.executions.filter(execution => execution.action === "SELL").reduce((acc, execution) => acc + execution.quantity * execution.price - execution.fees, 0);
 
+      const sortedTrades = [...trades].sort((a, b) => new Date(a.executions[0].time) - new Date(b.executions[0].time));
+
       return (
         h("table", null,
           h("thead", null,
@@ -218,7 +220,7 @@
             ),
           ),
           h("tbody", null,
-            trades.map(trade => h("tr", {key: trade.id},
+            sortedTrades.map(trade => h("tr", {key: trade.id},
               h("td", null, new Date(trade.executions[0].time).toLocaleString(locale)),
               h("td", null, trade.symbol),
               h("td", null, C(entryTotal(trade))),

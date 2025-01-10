@@ -117,8 +117,11 @@
       },
     };
 
+    const localizeDate = date => {
+      return new Date(date - new Date().getTimezoneOffset() * 60 * 1000);
+    };
     const currentMinute = () => {
-      const date = new Date(new Date() - new Date().getTimezoneOffset() * 60 * 1000);
+      const date = localizeDate(new Date());
       date.setSeconds(0, 0);
       return date.toISOString().slice(0, -1);
     };
@@ -135,7 +138,7 @@
       ...trade,
       executions: trade.executions.map(execution => ({
         ...execution,
-        time: new Date(execution.time).toISOString().slice(0, -1),
+        time: new Date(execution.time + "Z").toISOString().slice(0, -1),
         quantity: parseFloat(execution.quantity),
         price: parseFloat(execution.price),
         fees: parseFloat(execution.fees),
@@ -195,7 +198,68 @@
           bracketWinCounts[i] = tradesInBracket.reduce((acc, trade) => acc + (tradeNet(trade) >= 0.0 ? 1 : -1), 0);
         }
 
-        const chart = new Chart(document.getElementById("trade-stats-bracket-win-count-chart"), {
+        const chart = new Chart(document.getElementById("trade-stats-price-win-count-chart"), {
+          type: "bar",
+          data: {
+            labels: bracketLabels,
+            datasets: [{
+              label: 'Trades Won',
+              data: bracketWinCounts,
+              borderWidth: 1,
+              backgroundColor: S("accent"),
+            }],
+          },
+          options: {
+            indexAxis: "y",
+            scales: {
+              x: {
+                ticks: {
+                  color: S("text-primary"),
+                },
+                grid: {
+                  color: S("text-primary"),
+                },
+                min: bracketWinCounts.reduce((acc, count) => Math.min(acc, count), -10),
+                max: bracketWinCounts.reduce((acc, count) => Math.max(acc, count), 10),
+              },
+              y: {
+                title: {
+                  display: true,
+                  text: "Price per Unit",
+                  color: S("text-primary"),
+                },
+                ticks: {
+                  color: S("text-primary"),
+                },
+                grid: {
+                  color: S("text-primary"),
+                },
+              },
+            },
+            plugins: {
+              legend: {
+                labels: {
+                  color: S("text-primary"),
+                },
+              },
+            },
+          },
+        });
+        return () => chart.destroy();
+      }, [trades, theme]);
+      useEffect(() => {
+        const brackets = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+        const bracketLabels = new Array(brackets.length - 1);
+        const bracketWinCounts = new Array(brackets.length - 1);
+        for (let i = 0; i < brackets.length - 1; ++i) {
+          const bracketMin = brackets[i];
+          const bracketMax = brackets[i + 1];
+          const tradesInBracket = trades.filter(trade => new Date(trade.executions[0].time).getHours() >= bracketMin && new Date(trade.executions[0].time).getHours() < bracketMax);
+          bracketLabels[i] = `${((bracketMin - 1) % 12 + 1).toString().padStart(2, '0')}:00 - ${((bracketMax - 1) % 12 + 1).toString().padStart(2, '0')}:00`;
+          bracketWinCounts[i] = tradesInBracket.reduce((acc, trade) => acc + (tradeNet(trade) >= 0.0 ? 1 : -1), 0);
+        }
+
+        const chart = new Chart(document.getElementById("trade-stats-time-win-count-chart"), {
           type: "bar",
           data: {
             labels: bracketLabels,
@@ -248,8 +312,12 @@
       return (
         h("div", {className: "trade-charts"},
           h("div", {className: "trade-chart"},
-            h("span", null, "Trades won relative to price per unit"),
-            h("canvas", {id: "trade-stats-bracket-win-count-chart"}),
+            h("span", null, h("strong", null, "Trades won relative to price per unit")),
+            h("canvas", {id: "trade-stats-price-win-count-chart"}),
+          ),
+          h("div", {className: "trade-chart"},
+            h("span", null, h("strong", null, "Trades won relative to time frame")),
+            h("canvas", {id: "trade-stats-time-win-count-chart"}),
           ),
         )
       );
@@ -406,7 +474,7 @@
                 while (rowIndex < filteredRows.length) {
                   const symbol = filteredRows[rowIndex].Symbol;
                   const action = filteredRows[rowIndex].Side === "Buy" ? "BUY" : "SELL";
-                  const time = filteredRows[rowIndex]["Placed Time"];
+                  const time = filteredRows[rowIndex]["Placed Time"].slice(0, -4);
                   const quantity = filteredRows[rowIndex].Filled;
                   const price = filteredRows[rowIndex]["Avg Price"];
                   const fees = filteredRows[rowIndex].Side === "Buy" ? 0 : 0.02;
@@ -607,14 +675,18 @@
 
             .trade-charts {
               display: flex;
+              flex-wrap: wrap;
+              justify-content: center;
               padding: 10px;
             }
 
             .trade-chart {
+              width: min(99%, 550px);
+              height: 300px;
               background-color: ${S("background-secondary")};
+              margin: 10px;
               padding: 10px;
               border-radius: 10px;
-              width: 100%;
             }
 
             .trade-stats-or-chart-tabs {

@@ -142,6 +142,7 @@
       })),
       tags: trade.tags.filter(tag => tag !== ""),
     });
+    const tradeNet = trade => trade.executions.reduce((acc, execution) => acc + (execution.quantity * execution.price) * (execution.action === "BUY" ? -1 : 1) - execution.fees, 0.0);
 
     const TradeTable = ({T, locale, C, trades, setTrades, editTrade, removeTrade}) => {
       const entryTotal = trade => trade.executions.filter(execution => execution.action === "BUY").reduce((acc, execution) => acc + execution.quantity * execution.price + execution.fees, 0);
@@ -255,8 +256,6 @@
     };
 
     const TradeStats = ({T, C, P, trades}) => {
-      const tradeNet = trade => trade.executions.reduce((acc, execution) => acc + (execution.quantity * execution.price) * (execution.action === "BUY" ? -1 : 1) - execution.fees, 0.0);
-
       const netProfitLosses = trades.map(tradeNet);
       const wins = netProfitLosses.filter(net => net >= 0.0);
       const losses = netProfitLosses.filter(net => net < 0.0);

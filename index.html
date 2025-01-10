@@ -181,13 +181,7 @@
       );
     };
 
-    const TradeStats = ({T, C, P, trades}) => {
-      const tradeNet = trade => trade.executions.reduce((acc, execution) => acc + (execution.quantity * execution.price) * (execution.action === "BUY" ? -1 : 1) - execution.fees, 0.0);
-
-      const netProfitLosses = trades.map(tradeNet);
-      const wins = netProfitLosses.filter(net => net >= 0.0);
-      const losses = netProfitLosses.filter(net => net < 0.0);
-
+    const TradeCharts = ({T, C, S, theme, P, trades}) => {
       useEffect(() => {
         const brackets = [0.0, 1.0, 5.0, 10.0, 100.0, 500.0, 1000.0, 10000.0, 100000.0];
         const bracketLabels = new Array(brackets.length - 1);
@@ -208,12 +202,19 @@
               label: 'Trades Won',
               data: bracketWinCounts,
               borderWidth: 1,
+              backgroundColor: S("accent"),
             }],
           },
           options: {
             indexAxis: "y",
             scales: {
               x: {
+                ticks: {
+                  color: S("text-primary"),
+                },
+                grid: {
+                  color: S("text-primary"),
+                },
                 min: bracketWinCounts.reduce((acc, count) => Math.min(acc, count), -10),
                 max: bracketWinCounts.reduce((acc, count) => Math.max(acc, count), 10),
               },
@@ -221,33 +222,58 @@
                 title: {
                   display: true,
                   text: "Price per Unit",
+                  color: S("text-primary"),
+                },
+                ticks: {
+                  color: S("text-primary"),
+                },
+                grid: {
+                  color: S("text-primary"),
+                },
+              },
+            },
+            plugins: {
+              legend: {
+                labels: {
+                  color: S("text-primary"),
                 },
               },
             },
           },
         });
         return () => chart.destroy();
-      }, [trades]);
+      }, [trades, theme]);
 
       return (
-        h("div", null,
-          h("div", {className: "trade-stats"},
-            h("span", null, `${T("trade-stats-total-profit-loss")}: ${C(netProfitLosses.reduce((acc, net) => acc + net, 0.0))}`),
-            h("span", null, `${T("trade-stats-total-fees")}: ${C(trades.reduce((acc, trade) => acc + trade.executions.reduce((acc2, execution) => (acc2 + execution.fees), 0.0), 0.0))}`),
-            h("span", null, `${T("trade-stats-total-trades")}: ${wins.length + losses.length}`),
-            h("span", null, `${T("trade-stats-total-wins")}: ${wins.length}`),
-            h("span", null, `${T("trade-stats-total-losses")}: ${losses.length}`),
-            h("span", null, `${T("trade-stats-win-percentage")}: ${P(wins.length / ((wins.length + losses.length) || 1))}`),
-            h("span", null, `${T("trade-stats-largest-win")}: ${C(wins.reduce((acc, win) => Math.max(acc, win), 0.0))}`),
-            h("span", null, `${T("trade-stats-largest-loss")}: ${C(losses.reduce((acc, loss) => Math.min(acc, loss), 0.0))}`),
-            h("span", null, `${T("trade-stats-average-trade")}: ${C(netProfitLosses.reduce((acc, net) => acc + net, 0.0) / (netProfitLosses.length || 1))}`),
-            h("span", null, `${T("trade-stats-average-win")}: ${C(wins.reduce((acc, win) => acc + win, 0.0) / (wins.length || 1))}`),
-            h("span", null, `${T("trade-stats-average-loss")}: ${C(losses.reduce((acc, loss) => acc + loss, 0.0) / (losses.length || 1))}`),
-          ),
-          h("div", {className: "trade-stats-chart"},
+        h("div", {className: "trade-charts"},
+          h("div", {className: "trade-chart"},
             h("span", null, "Trades won relative to price per unit"),
             h("canvas", {id: "trade-stats-bracket-win-count-chart"}),
           ),
+        )
+      );
+    };
+
+    const TradeStats = ({T, C, P, trades}) => {
+      const tradeNet = trade => trade.executions.reduce((acc, execution) => acc + (execution.quantity * execution.price) * (execution.action === "BUY" ? -1 : 1) - execution.fees, 0.0);
+
+      const netProfitLosses = trades.map(tradeNet);
+      const wins = netProfitLosses.filter(net => net >= 0.0);
+      const losses = netProfitLosses.filter(net => net < 0.0);
+
+      return (
+        h("div", {className: "trade-stats"},
+          h("span", null, `${T("trade-stats-total-profit-loss")}: ${C(netProfitLosses.reduce((acc, net) => acc + net, 0.0))}`),
+          h("span", null, `${T("trade-stats-total-fees")}: ${C(trades.reduce((acc, trade) => acc + trade.executions.reduce((acc2, execution) => (acc2 + execution.fees), 0.0), 0.0))}`),
+          h("span", null, `${T("trade-stats-total-trades")}: ${wins.length + losses.length}`),
+          h("span", null, `${T("trade-stats-total-wins")}: ${wins.length}`),
+          h("span", null, `${T("trade-stats-total-losses")}: ${losses.length}`),
+          h("span", null, `${T("trade-stats-win-percentage")}: ${P(wins.length / ((wins.length + losses.length) || 1))}`),
+          h("span", null, `${T("trade-stats-largest-win")}: ${C(wins.reduce((acc, win) => Math.max(acc, win), 0.0))}`),
+          h("span", null, `${T("trade-stats-largest-loss")}: ${C(losses.reduce((acc, loss) => Math.min(acc, loss), 0.0))}`),
+          h("span", null, `${T("trade-stats-average-trade")}: ${C(netProfitLosses.reduce((acc, net) => acc + net, 0.0) / (netProfitLosses.length || 1))}`),
+          h("span", null, `${T("trade-stats-average-win")}: ${C(wins.reduce((acc, win) => acc + win, 0.0) / (wins.length || 1))}`),
+          h("span", null, `${T("trade-stats-average-loss")}: ${C(losses.reduce((acc, loss) => acc + loss, 0.0) / (losses.length || 1))}`),
         )
       );
     };
@@ -486,6 +512,7 @@
       const [showAppSettings, setShowAppSettings] = useState(false);
       const [showTradeEntry, setShowTradeEntry] = useState(false);
       const [showTradeImportExport, setShowTradeImportExport] = useState(false);
+      const [tradeStatsOrCharts, setTradeStatsOrCharts] = useState("stats");
       const [editingTrade, setEditingTrade] = useState(null);
       const [onSaveTrade, setOnSaveTrade] = useState(null);
       const [trades, setTrades] = useState([]);
@@ -579,10 +606,21 @@
               border-radius: 4px;
             }
 
-            .trade-stats-chart {
+            .trade-charts {
+              display: flex;
+              padding: 10px;
+            }
+
+            .trade-chart {
               background-color: ${S("background-secondary")};
               padding: 10px;
               border-radius: 10px;
+              width: 100%;
+            }
+
+            .trade-stats-or-chart-tabs {
+              width: fit-content;
+              margin: 0 auto;
             }
 
             .trade-table {
@@ -626,7 +664,14 @@
           showAppSettings && h(AppSettings, {T, locale, setLocale, theme, setTheme, currency, setCurrency, closeSelf: () => setShowAppSettings(false)}),
           showTradeEntry && h(TradeEntry, {T, trade: editingTrade, setTrade: setEditingTrade, onSaveTrade, closeSelf: () => setShowTradeEntry(false)}),
           showTradeImportExport && h(TradeImportExport, {T, trades, closeSelf: () => setShowTradeImportExport(false)}),
-          h(TradeStats, {T, C, P, trades}),
+          h("div", {className: "trade-stats-or-chart-tabs"},
+            h("input", {id: "app-trade-stats-radio", type: "radio", name: "trade-stats-or-chart-tabs", checked: tradeStatsOrCharts === "stats", onClick: e => setTradeStatsOrCharts("stats")}),
+            h("label", {htmlFor: "app-trade-stats-radio"}, "Statistics"),
+            h("input", {id: "app-trade-charts-radio", type: "radio", name: "trade-stats-or-chart-tabs", checked: tradeStatsOrCharts === "charts", onClick: e => setTradeStatsOrCharts("charts")}),
+            h("label", {htmlFor: "app-trade-charts-radio"}, "Charts"),
+          ),
+          tradeStatsOrCharts === "stats" && h(TradeStats, {T, C, P, trades}),
+          tradeStatsOrCharts === "charts" && h(TradeCharts, {T, C, S, theme, P, trades}),
           h(TradeTable, {T, locale, C, trades, setTrades, editTrade, removeTrade}),
           h("footer", null,
             h("span", null, T("app-made-with-love-text")),

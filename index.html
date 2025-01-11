@@ -31,7 +31,7 @@
       });
       return {
         add: (store, value) => inner.then(db => db.transaction(store, "readwrite").objectStore(store).add(value)).then(request => (request.onsuccess = () => document.dispatchEvent(ondbchange))),
-        bulkAdd: (store, values) => inner.then(db => { const tx = db.transaction(store, "readwrite"); values.forEach(value => tx.objectStore(store).add(value)); return tx; }).then(request => (request.onsuccess = () => document.dispatchEvent(ondbchange))),
+        bulkAdd: (store, values) => inner.then(db => { const tx = db.transaction(store, "readwrite").objectStore(store); values.forEach(value => tx.add(value)); tx.transaction.oncomplete = () => document.dispatchEvent(ondbchange); }),
         put: (store, value) => inner.then(db => db.transaction(store, "readwrite").objectStore(store).put(value)).then(request => (request.onsuccess = () => document.dispatchEvent(ondbchange))),
         delete: (store, id) => inner.then(db => db.transaction(store, "readwrite").objectStore(store).delete(id)).then(request => (request.onsuccess = () => document.dispatchEvent(ondbchange))),
         clear: store => inner.then(db => db.transaction(store, "readwrite").objectStore(store).clear()).then(request => (request.onsuccess = () => document.dispatchEvent(ondbchange))),
@@ -66,11 +66,14 @@
         "app-settings-locale-label": "Locale:",
         "app-settings-theme-label": "Theme:",
         "app-settings-currency-label": "Currency:",
+        "app-settings-remove-all-trades-button": "Remove All Trades",
+        "app-settings-remove-all-trades-confirm": "Are you sure you want to remove all trades?",
         "trade-table-time-header": "Time",
         "trade-table-symbol-header": "Symbol",
         "trade-table-entry-total-header": "Entry Total",
         "trade-table-exit-total-header": "Exit Total",
         "trade-table-net-profit-loss-header": "Net P/L",
+        "trade-table-tags-header": "Tags",
         "trade-table-edit-header": "Edit",
         "trade-table-remove-header": "Remove",
         "trade-stats-total-profit-loss-label": "Total Profit/Loss:",
@@ -80,8 +83,15 @@
         "trade-stats-win-percentage-label": "Win Percentage:",
         "trade-stats-largest-win-label": "Largest Win:",
         "trade-stats-largest-loss-label": "Largest Loss:",
+        "trade-stats-average-trade-label": "Average Trade:",
         "trade-stats-average-win-label": "Average Win:",
         "trade-stats-average-loss-label": "Average Loss:",
+        "trade-import-export-header-text": "Import/Export",
+        "trade-import-export-close-button": "Close",
+        "trade-import-export-csv-type-label": "CSV Import Type:",
+        "trade-import-export-csv-file-label": "CSV File:",
+        "trade-import-export-import-from-csv-button": "Import from CSV",
+        "trade-import-export-export-to-csv-button": "Export to CSV",
       },
     };
 
@@ -99,6 +109,16 @@
       const date = new Date(new Date() - new Date().getTimezoneOffset() * 60 * 1000);
       date.setSeconds(0, 0);
       return date.toISOString().slice(0, -1);
+    };
+    const downloadTextFile = (type, filename, data) => {
+      const blob = new Blob([data], {type});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.download = filename;
+      a.href = url;
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
     };
     const prepareTrade = trade => ({
       ...trade,
@@ -129,6 +149,7 @@
               h("th", null, T("trade-table-entry-total-header")),
               h("th", null, T("trade-table-exit-total-header")),
               h("th", null, T("trade-table-net-profit-loss-header")),
+              h("th", null, T("trade-table-tags-header")),
               h("th", null, T("trade-table-edit-header")),
               h("th", null, T("trade-table-remove-header")),
             ),
@@ -140,6 +161,7 @@
               h("td", null, C(entryTotal(trade))),
               h("td", null, C(exitTotal(trade))),
               h("td", null, C(exitTotal(trade) - entryTotal(trade))),
+              h("td", null, trade.tags.join(";")),
               h("td", null, h("button", {onClick: () => editTrade(trade)}, "Edit")),
               h("td", null, h("button", {onClick: () => removeTrade(trade)}, "Remove")),
             )),
@@ -163,6 +185,7 @@
         h("span", null, `${T("trade-stats-win-percentage-label")} ${P(wins.length / (netProfitLosses.length || 1))}`),
         h("span", null, `${T("trade-stats-largest-win-label")} ${C(wins.reduce((acc, win) => Math.max(acc, win), 0))}`),
         h("span", null, `${T("trade-stats-largest-loss-label")} ${C(losses.reduce((acc, loss) => Math.min(acc, loss), 0))}`),
+        h("span", null, `${T("trade-stats-average-trade-label")} ${C(netProfitLosses.reduce((acc, net) => acc + net, 0) / (netProfitLosses.length || 1))}`),
         h("span", null, `${T("trade-stats-average-win-label")} ${C(wins.reduce((acc, win) => acc + win, 0) / (wins.length || 1))}`),
         h("span", null, `${T("trade-stats-average-loss-label")} ${C(losses.reduce((acc, loss) => acc + loss, 0) / (losses.length || 1))}`),
       );
@@ -235,6 +258,96 @@
       );
     };
 
+    const TradeImportExport = ({trades, closeSelf}) => {
+      const id = useId();
+      const {T} = useContext(LocaleContext);
+      const [CSVType, setCSVType] = useState("stonkla");
+      const dialogRef = useRef(null);
+      const fileInputRef = useRef(null);
+
+      const importCSV = e => {
+        e.preventDefault();
+        const reader = new FileReader();
+        reader.onload = e => {
+          const text = e.target.result;
+          const lines = text.split("\n").filter(line => line !== "");
+          const headings = lines[0].split(",");
+          switch (CSVType) {
+            case "stonkla": {
+              const data = lines.slice(1).map(line => line.split(","));
+              const newTrades = [];
+              let rowIndex = 0;
+              while (rowIndex < data.length) {
+                const [startId, startSymbol] = data[rowIndex].slice(0, 2);
+                const executions = [];
+                const tags = data[rowIndex][7].split(";");
+                while (rowIndex < data.length) {
+                  const [id, symbol, action, time, quantity, price, fees, tags] = data[rowIndex];
+                  if (id !== startId) break;
+                  executions.push({action, time, quantity, price, fees});
+                  rowIndex += 1;
+                }
+                newTrades.push(prepareTrade({symbol: startSymbol, executions, tags}));
+              }
+              DB.bulkAdd("trades", newTrades);
+              break;
+            }
+            // case "lightspeed": {
+            //   break;
+            // }
+            // case "webull": {
+            //   break;
+            // }
+            default: {
+              console.error("unknown CSV type selected", CSVType);
+              break;
+            }
+          }
+        };
+        reader.readAsText(fileInputRef.current.files[0]);
+      };
+      const exportCSV = () => {
+        let result = "id,symbol,action,time,quantity,price,fees,tags\n";
+        for (const trade of trades) {
+          for (const execution of trade.executions) {
+            result += trade.id + ",";
+            result += trade.symbol + ",";
+            result += execution.action + ",";
+            result += execution.time + ",";
+            result += execution.quantity + ",";
+            result += execution.price + ",";
+            result += execution.fees + ",";
+            result += trade.tags.join(";") + "\n";
+          }
+        }
+        downloadTextFile("text/csv", "trades.csv", result);
+      };
+
+      useEffect(() => dialogRef.current.showModal(), []);
+
+      return h("dialog", {ref: dialogRef, onCancel: closeSelf},
+        h("div", {className: "flex-header"},
+          h("h2", null, T("trade-import-export-header-text")),
+          h("span", {className: "flex-grow"}),
+          h("button", {onClick: closeSelf}, T("trade-import-export-close-button")),
+        ),
+        h("form", {className: "flex-column", onSubmit: importCSV},
+          h("label", {htmlFor: id + "-csv-type"}, T("trade-import-export-csv-type-label")),
+          h("select", {id: id + "-csv-type", defaultValue: CSVType, onChange: e => setCSVType(e.target.value)},
+             h("option", {value: "stonkla"}, "Stonkla"),
+            //  h("option", {value: "lightspeed"}, "Lightspeed"),
+            //  h("option", {value: "webull"}, "Webull"),
+          ),
+          h("label", {htmlFor: id + "-csv-file"}, T("trade-import-export-csv-file-label")),
+          h("input", {ref: fileInputRef, id: id + "-csv-file", type: "file", required: true}),
+          h("button", null, T("trade-import-export-import-from-csv-button")),
+        ),
+        h("div", {className: "flex-column"},
+          h("button", {onClick: exportCSV}, T("trade-import-export-export-to-csv-button")),
+        ),
+      );
+    };
+
     const AppSettings = ({closeSelf}) => {
       const id = useId();
       const {T, locale, setLocale, currency, setCurrency} = useContext(LocaleContext);
@@ -262,6 +375,7 @@
           h("select", {id: id + "-currency", defaultValue: currency, onChange: e => setCurrency(e.target.value)},
             ["USD", "CAD", "GBP", "EUR", "JPY"].map(c => h("option", {key: c, value: c}, c)),
           ),
+          h("button", {className: "app-settings-remove-all-trades-button", onClick: () => confirm(T("app-settings-remove-all-trades-confirm")) && DB.clear("trades")}, T("app-settings-remove-all-trades-button")),
         ),
       );
     };
@@ -274,6 +388,7 @@
       const [theme, setTheme] = useState(defaultTheme in THEMES ? defaultTheme : Object.keys(THEMES)[0]);
       const [currency, setCurrency] = useState(localStorage.getItem("currency") ?? "USD");
       const [showAppSettings, setShowAppSettings] = useState(false);
+      const [showTradeImportExport, setShowTradeImportExport] = useState(false);
       const [showTradeEntry, setShowTradeEntry] = useState(false);
       const [editingTrade, setEditingTrade] = useState(null);
       const [onEditingTradeSave, setOnEditingTradeSave] = useState(null);
@@ -354,6 +469,10 @@
               text-align: center;
             }
 
+            .app-settings-remove-all-trades-button {
+              color: red;
+            }
+
             .trade-table {
               overflow: auto;
             }
@@ -401,10 +520,11 @@
             h("h1", null, "Stonkla"),
             h("span", {className: "flex-grow"}),
             h("button", {onClick: addTrade}, T("app-add-trade-button")),
-            h("button", null, T("app-import-export-button")),
+            h("button", {onClick: () => setShowTradeImportExport(true)}, T("app-import-export-button")),
             h("button", {onClick: () => setShowAppSettings(true)}, T("app-open-settings-button")),
           ),
           showAppSettings && h(AppSettings, {closeSelf: () => setShowAppSettings(false)}),
+          showTradeImportExport && h(TradeImportExport, {trades, closeSelf: () => setShowTradeImportExport(false)}),
           showTradeEntry && h(TradeEntry, {trade: editingTrade, setTrade: setEditingTrade, onSaveTrade: onEditingTradeSave, closeSelf: () => setShowTradeEntry(false)}),
           h(TradeStats, {trades}),
           h(TradeTable, {trades, editTrade, removeTrade}),

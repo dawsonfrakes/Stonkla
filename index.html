@@ -106,6 +106,7 @@
       },
     };
 
+    const toLocalTime = date => new Date(date - new Date().getTimezoneOffset() * 60 * 1000).toISOString().slice(0, -1);
     const currentMinute = () => {
       const date = new Date(new Date() - new Date().getTimezoneOffset() * 60 * 1000);
       date.setSeconds(0, 0);
@@ -138,8 +139,8 @@
     const TradeTable = ({trades, editTrade, removeTrade}) => {
       const {T, C, locale} = useContext(LocaleContext);
 
-      const entryTotal = trade => trade.executions.filter(execution => execution.action === "BUY").reduce((acc, execution) => execution.quantity * execution.price + execution.fees, 0);
-      const exitTotal = trade => trade.executions.filter(execution => execution.action === "SELL").reduce((acc, execution) => execution.quantity * execution.price - execution.fees, 0);
+      const entryTotal = trade => trade.executions.filter(execution => execution.action === "BUY").reduce((acc, execution) => acc + execution.quantity * execution.price + execution.fees, 0);
+      const exitTotal = trade => trade.executions.filter(execution => execution.action === "SELL").reduce((acc, execution) => acc + execution.quantity * execution.price - execution.fees, 0);
 
       const sortedTrades = [...trades].sort((a, b) => new Date(b.executions[0].time) - new Date(a.executions[0].time));
 
@@ -296,9 +297,29 @@
               DB.bulkAdd("trades", newTrades);
               break;
             }
-            // case "lightspeed": {
-            //   break;
-            // }
+            case "lightspeed": {
+              const data = lines.slice(1).map(line => line.split(","));
+              const newTrades = [];
+              let rowIndex = 0;
+              while (rowIndex < data.length) {
+                const obj = Object.fromEntries(headings.map((heading, i) => [heading, data[rowIndex][i]]));
+                const get = key => obj[`"${key}"`].slice(1, -1).trim();
+                const startSymbol = get("Symbol");
+                const executions = [];
+                const tags = ["Lightspeed"];
+                while (rowIndex < data.length) {
+                  const obj = Object.fromEntries(headings.map((heading, i) => [heading, data[rowIndex][i]]));
+                  const get = key => obj[`"${key}"`].slice(1, -1).trim();
+                  const [symbol, side, quantity, price, time] = [get("Symbol"), get("Side"), get("Qty"), get("Price"), get("Raw Exec. Time")];
+                  if (symbol !== startSymbol) break;
+                  executions.push({action: side === "B" ? "BUY" : "SELL", time: toLocalTime(new Date(time)), quantity: Math.abs(quantity), price, fees: parseFloat(get("Commission Amount")) + parseFloat(get("Fee1")) + parseFloat(get("Fee2")) + parseFloat(get("Fee3")) + parseFloat(get("Fee4")) + parseFloat(get("FeeMF")) + parseFloat(get("FeeSEC")) + parseFloat(get("FeeStamp")) + parseFloat(get("FeeTAF"))});
+                  rowIndex += 1;
+                }
+                newTrades.push(prepareTrade({symbol: startSymbol, executions, tags}));
+              }
+              DB.bulkAdd("trades", newTrades);
+              break;
+            }
             case "webull": {
               const data = lines.slice(1).map(line => line.split(",")).filter(line => line[3] === "Filled");
               const newTrades = [];
@@ -310,7 +331,7 @@
                 while (rowIndex < data.length) {
                   const [name, symbol, action, filled, quantity, quantity2, price, avgPrice, tif, time, time2] = data[rowIndex];
                   if (symbol !== startSymbol) break;
-                  executions.push({action: action === "Buy" ? "BUY" : "SELL", time: time.slice(0, 24), quantity, price: avgPrice, fees: action === "Sell" ? 0.02 : 0.0});
+                  executions.push({action: action === "Buy" ? "BUY" : "SELL", time: toLocalTime(new Date(time.slice(0, 24))), quantity, price: avgPrice, fees: action === "Sell" ? 0.02 : 0.0});
                   rowIndex += 1;
                 }
                 executions.reverse();
@@ -357,7 +378,7 @@
           h("label", {htmlFor: id + "-csv-type"}, T("trade-import-export-csv-type-label")),
           h("select", {id: id + "-csv-type", defaultValue: CSVType, onChange: e => setCSVType(e.target.value)},
              h("option", {value: "stonkla"}, "Stonkla"),
-            //  h("option", {value: "lightspeed"}, "Lightspeed"),
+             h("option", {value: "lightspeed"}, "Lightspeed"),
              h("option", {value: "webull"}, "Webull"),
           ),
           h("label", {htmlFor: id + "-csv-file"}, T("trade-import-export-csv-file-label")),

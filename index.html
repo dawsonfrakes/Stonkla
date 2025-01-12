@@ -299,9 +299,27 @@
             // case "lightspeed": {
             //   break;
             // }
-            // case "webull": {
-            //   break;
-            // }
+            case "webull": {
+              const data = lines.slice(1).map(line => line.split(",")).filter(line => line[3] === "Filled");
+              const newTrades = [];
+              let rowIndex = 0;
+              while (rowIndex < data.length) {
+                const startSymbol = data[rowIndex][1];
+                const executions = [];
+                const tags = ["Webull"];
+                while (rowIndex < data.length) {
+                  const [name, symbol, action, filled, quantity, quantity2, price, avgPrice, tif, time, time2] = data[rowIndex];
+                  if (symbol !== startSymbol) break;
+                  executions.push({action: action === "Buy" ? "BUY" : "SELL", time: time.slice(0, 24), quantity, price: avgPrice, fees: action === "Sell" ? 0.02 : 0.0});
+                  rowIndex += 1;
+                }
+                executions.reverse();
+                newTrades.push(prepareTrade({symbol: startSymbol, executions, tags}));
+              }
+              newTrades.reverse();
+              DB.bulkAdd("trades", newTrades);
+              break;
+            }
             default: {
               console.error("unknown CSV type selected", CSVType);
               break;
@@ -340,7 +358,7 @@
           h("select", {id: id + "-csv-type", defaultValue: CSVType, onChange: e => setCSVType(e.target.value)},
              h("option", {value: "stonkla"}, "Stonkla"),
             //  h("option", {value: "lightspeed"}, "Lightspeed"),
-            //  h("option", {value: "webull"}, "Webull"),
+             h("option", {value: "webull"}, "Webull"),
           ),
           h("label", {htmlFor: id + "-csv-file"}, T("trade-import-export-csv-file-label")),
           h("input", {ref: fileInputRef, id: id + "-csv-file", type: "file", required: true}),

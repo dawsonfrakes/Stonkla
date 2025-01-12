@@ -77,6 +77,7 @@
         "trade-table-edit-header": "Edit",
         "trade-table-remove-header": "Remove",
         "trade-stats-total-profit-loss-label": "Total Profit/Loss:",
+        "trade-stats-total-fees-label": "Total Fees/Commissions:",
         "trade-stats-total-trades-label": "Total Trades:",
         "trade-stats-win-count-label": "Win Count:",
         "trade-stats-loss-count-label": "Loss Count:",
@@ -179,6 +180,7 @@
 
       return h("div", {className: "trade-stats"},
         h("span", null, `${T("trade-stats-total-profit-loss-label")} ${C(netProfitLosses.reduce((acc, net) => acc + net, 0))}`),
+        h("span", null, `${T("trade-stats-total-fees-label")} ${C(trades.reduce((acc, trade) => acc + trade.executions.reduce((acc2, execution) => acc2 + execution.fees, 0), 0))}`),
         h("span", null, `${T("trade-stats-total-trades-label")} ${netProfitLosses.length}`),
         h("span", null, `${T("trade-stats-win-count-label")} ${wins.length}`),
         h("span", null, `${T("trade-stats-loss-count-label")} ${losses.length}`),

@@ -7,11 +7,10 @@
 </head>
 <body>
   <script type="module">
-    import {createElement, createContext, useState, useEffect, useRef, useContext, useId} from "https://esm.sh/react@19.0.0";
+    import {createElement as h, createContext, useState, useEffect, useRef, useContext, useId} from "https://esm.sh/react@19.0.0";
     import ReactDOMClient from "https://esm.sh/react-dom@19.0.0/client";
-    const h = createElement;
 
-    import {Chart} from "https://esm.sh/chart.js@4.4.7";
+    import {Chart} from "https://esm.sh/chart.js@4.4.7/auto";
 
     const DB = (() => {
       const ondbchange = new CustomEvent("ondbchange");
@@ -87,6 +86,9 @@
         "trade-stats-average-trade-label": "Average Trade:",
         "trade-stats-average-win-label": "Average Win:",
         "trade-stats-average-loss-label": "Average Loss:",
+        "trade-charts-trades-won-header": "Trades Won",
+        "trade-charts-trades-won-relative-to-price-range-text": "Trades won relative to price range",
+        "trade-charts-trades-won-relative-to-time-frame-text": "Trades won relative to time frame",
         "trade-import-export-header-text": "Import/Export",
         "trade-import-export-close-button": "Close",
         "trade-import-export-csv-type-label": "CSV Import Type:",
@@ -170,6 +172,135 @@
               h("td", null, h("button", {onClick: () => removeTrade(trade)}, "Remove")),
             )),
           ),
+        ),
+      );
+    };
+
+    const TradeCharts = ({trades}) => {
+      const {T, C, currency} = useContext(LocaleContext);
+      const {S, theme} = useContext(ThemeContext);
+      const winsVersusTODChartRef = useRef(null);
+      const winsVersusPriceChartRef = useRef(null);
+
+      useEffect(() => {
+        const prices = [0, 1, 2, 5, 10, 20, 50, 100, 500, 5000, 10000, 100000, 1000000];
+        const labels = [];
+        const data = [];
+        for (let i = 0; i < prices.length - 1; ++i) {
+          const priceMin = prices[i];
+          const priceMax = prices[i + 1];
+          labels.push(C(priceMin) + " - " + C(priceMax));
+          data.push(trades.filter(trade => trade.executions[0].price >= priceMin && trade.executions[0].price < priceMax).reduce((acc, trade) => acc + (trade.executions.reduce((acc2, execution) => acc2 + execution.quantity * execution.price * (execution.action === "BUY" ? -1 : 1) - execution.fees, 0) >= 0.0 ? 1 : -1), 0));
+        }
+
+        const chart = new Chart(winsVersusPriceChartRef.current, {
+          type: "bar",
+          data: {
+            labels,
+            datasets: [{
+              label: T("trade-charts-trades-won-header"),
+              data,
+              borderWidth: 1,
+              backgroundColor: S("accent"),
+            }],
+          },
+          options: {
+            indexAxis: "y",
+            scales: {
+              x: {
+                min: Math.min(...data, -10),
+                max: Math.max(...data, +10),
+                ticks: {
+                  color: S("text-primary"),
+                },
+                grid: {
+                  color: S("text-primary"),
+                },
+              },
+              y: {
+                ticks: {
+                  color: S("text-primary"),
+                },
+                grid: {
+                  color: S("text-primary"),
+                },
+              },
+            },
+            plugins: {
+              legend: {
+                labels: {
+                  color: S("text-primary"),
+                },
+              },
+            },
+          },
+        });
+        return () => chart.destroy();
+      }, [trades, currency, theme]);
+      useEffect(() => {
+        const times = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+        const labels = [];
+        const data = [];
+        for (let i = 0; i < times.length - 1; ++i) {
+          const timeMin = times[i];
+          const timeMax = times[i + 1];
+          labels.push(String((timeMin - 1) % 12 + 1).padStart(2, "0") + ":00 - " + String((timeMax - 1) % 12 + 1).padStart(2, "0") + ":00");
+          data.push(trades.filter(trade => new Date(trade.executions[0].time).getHours() >= timeMin && new Date(trade.executions[0].time).getHours() < timeMax).reduce((acc, trade) => acc + (trade.executions.reduce((acc2, execution) => acc2 + execution.quantity * execution.price * (execution.action === "BUY" ? -1 : 1) - execution.fees, 0) >= 0.0 ? 1 : -1), 0));
+        }
+
+        const chart = new Chart(winsVersusTODChartRef.current, {
+          type: "bar",
+          data: {
+            labels,
+            datasets: [{
+              label: T("trade-charts-trades-won-header"),
+              data,
+              borderWidth: 1,
+              backgroundColor: S("accent"),
+            }],
+          },
+          options: {
+            indexAxis: "y",
+            scales: {
+              x: {
+                min: Math.min(...data, -10),
+                max: Math.max(...data, +10),
+                ticks: {
+                  color: S("text-primary"),
+                },
+                grid: {
+                  color: S("text-primary"),
+                },
+              },
+              y: {
+                ticks: {
+                  color: S("text-primary"),
+                },
+                grid: {
+                  color: S("text-primary"),
+                },
+              },
+            },
+            plugins: {
+              legend: {
+                labels: {
+                  color: S("text-primary"),
+                },
+              },
+            },
+          },
+        });
+        return () => chart.destroy();
+      }, [trades, theme]);
+
+      return h("div", {className: "trade-charts"},
+        h("div", {className: "trade-charts-chart"},
+          h("span", {className: "trade-charts-title"}, T("trade-charts-trades-won-relative-to-price-range-text")),
+          h("canvas", {ref: winsVersusPriceChartRef}),
+        ),
+        h("div", {className: "trade-charts-chart"},
+          h("span", {className: "trade-charts-title"}, T("trade-charts-trades-won-relative-to-time-frame-text")),
+          h("canvas", {ref: winsVersusTODChartRef}),
         ),
       );
     };
@@ -520,6 +651,20 @@
               overflow: auto;
             }
 
+            .trade-charts {
+              display: flex;
+              justify-content: center;
+              flex-wrap: wrap;
+            }
+
+            .trade-charts-chart {
+              background-color: ${S("background-secondary")};
+              padding: 10px;
+              margin: 10px;
+              border-radius: 10px;
+              min-width: min(90%, 700px);
+            }
+
             .trade-stats {
               display: flex;
               flex-wrap: wrap;
@@ -570,6 +715,7 @@
           showTradeImportExport && h(TradeImportExport, {trades, closeSelf: () => setShowTradeImportExport(false)}),
           showTradeEntry && h(TradeEntry, {trade: editingTrade, setTrade: setEditingTrade, onSaveTrade: onEditingTradeSave, closeSelf: () => setShowTradeEntry(false)}),
           h(TradeStats, {trades}),
+          h(TradeCharts, {trades}),
           h(TradeTable, {trades, editTrade, removeTrade}),
           h("footer", null,
             "Made with ❤️ by Dfra",

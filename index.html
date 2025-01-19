@@ -428,6 +428,7 @@
                   executions.push({action, time, quantity, price, fees});
                   rowIndex += 1;
                 }
+                executions.sort((a, b) => new Date(a.time) - new Date(b.time));
                 newTrades.push(prepareTrade({symbol: startSymbol, executions, tags}));
               }
               DB.bulkAdd("trades", newTrades);

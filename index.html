@@ -90,8 +90,10 @@
         "trade-stats-average-win-label": "Average Win:",
         "trade-stats-average-loss-label": "Average Loss:",
         "trade-charts-trades-won-header": "Trades Won",
+        "trade-charts-equity-header": "Equity",
         "trade-charts-trades-won-relative-to-price-range-text": "Trades won relative to price range",
         "trade-charts-trades-won-relative-to-time-frame-text": "Trades won relative to time frame",
+        "trade-charts-equity-curve-text": "Equity curve",
         "trade-import-export-header-text": "Import/Export",
         "trade-import-export-close-button": "Close",
         "trade-import-export-csv-type-label": "CSV Import Type:",
@@ -182,10 +184,11 @@
     };
 
     const TradeCharts = ({trades}) => {
-      const {T, C, currency} = useContext(LocaleContext);
+      const {T, locale, C, currency} = useContext(LocaleContext);
       const {S, theme} = useContext(ThemeContext);
       const winsVersusTODChartRef = useRef(null);
       const winsVersusPriceChartRef = useRef(null);
+      const equityCurveRef = useRef(null);
 
       useEffect(() => {
         const prices = [0, 1, 2, 5, 10, 20, 50, 100, 500, 5000, 10000, 100000, 1000000];
@@ -297,6 +300,35 @@
         });
         return () => chart.destroy();
       }, [trades, theme]);
+      useEffect(() => {
+        const labels = [];
+        const data = [];
+        let startDate = trades.reduce((acc, trade) => Math.min(new Date(trade.executions[0].time).valueOf(), acc), new Date().valueOf());
+        let runningTotal = 0.0;
+        for (const dt = new Date(startDate); dt <= new Date(); dt.setDate(dt.getDate() + 1)) {
+          const end = new Date(new Date(dt).setDate(dt.getDate() + 1));
+          labels.push(dt.toLocaleDateString(locale));
+          const dayTrades = trades.filter(trade => new Date(trade.executions[0].time) >= dt && new Date(trade.executions[0].time) < end);
+          runningTotal += dayTrades.reduce((acc, trade) => acc + trade.executions.reduce((acc2, execution) => acc2 + execution.quantity * execution.price * (execution.action === "BUY" ? -1 : 1) - execution.fees, 0.0), 0.0);
+          data.push(runningTotal);
+        }
+
+        const chart = new Chart(equityCurveRef.current, {
+          type: "line",
+          data: {
+            labels,
+            datasets: [{
+              label: T("trade-charts-equity-header"),
+              data,
+              borderWidth: 1,
+              borderColor: S("accent"),
+              backgroundColor: S("accent"),
+              showLine: true,
+          }],
+          },
+        });
+        return () => chart.destroy();
+      }, [trades, locale, theme, currency]);
 
       return h("div", {className: "trade-charts"},
         h("div", {className: "trade-charts-chart"},
@@ -306,6 +338,10 @@
         h("div", {className: "trade-charts-chart"},
           h("span", {className: "trade-charts-title"}, T("trade-charts-trades-won-relative-to-time-frame-text")),
           h("canvas", {ref: winsVersusTODChartRef}),
+        ),
+        h("div", {className: "trade-charts-chart"},
+          h("span", {className: "trade-charts-title"}, T("trade-charts-equity-curve-text")),
+          h("canvas", {ref: equityCurveRef}),
         ),
       );
     };

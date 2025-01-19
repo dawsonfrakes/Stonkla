@@ -323,8 +323,36 @@
               borderWidth: 1,
               borderColor: S("accent"),
               backgroundColor: S("accent"),
-              showLine: true,
+              borderWidth: 2,
+              pointRadius: 1,
           }],
+          },
+          options: {
+            scales: {
+              x: {
+                ticks: {
+                  color: S("text-primary"),
+                },
+                grid: {
+                  color: S("text-primary"),
+                },
+              },
+              y: {
+                ticks: {
+                  color: S("text-primary"),
+                },
+                grid: {
+                  color: S("text-primary"),
+                },
+              },
+            },
+            plugins: {
+              legend: {
+                labels: {
+                  color: S("text-primary"),
+                },
+              },
+            },
           },
         });
         return () => chart.destroy();

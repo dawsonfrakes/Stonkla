@@ -305,7 +305,7 @@
         const data = [];
         let startDate = trades.reduce((acc, trade) => Math.min(new Date(trade.executions[0].time).valueOf(), acc), new Date().valueOf());
         let runningTotal = 0.0;
-        for (const dt = new Date(startDate); dt <= new Date(); dt.setDate(dt.getDate() + 1)) {
+        for (const dt = new Date(startDate); dt <= new Date(new Date().setUTCHours(23, 59, 59)); dt.setDate(dt.getDate() + 1)) {
           const end = new Date(new Date(dt).setDate(dt.getDate() + 1));
           labels.push(dt.toLocaleDateString(locale));
           const dayTrades = trades.filter(trade => new Date(trade.executions[0].time) >= dt && new Date(trade.executions[0].time) < end);
@@ -371,6 +371,80 @@
           h("span", {className: "trade-charts-title"}, T("trade-charts-equity-curve-text")),
           h("canvas", {ref: equityCurveRef}),
         ),
+      );
+    };
+
+    const TradeCalendar = ({trades}) => {
+      const ref = useRef(null);
+      const {T, C, currency} = useContext(LocaleContext);
+      const {S, theme} = useContext(ThemeContext);
+
+      useEffect(() => {
+        const startDate = new Date(new Date(new Date().setUTCDate(1)).setUTCHours(0, 0, 0, 0));
+        startDate.setDate(startDate.getDate() - startDate.getDay());
+
+        const data = [];
+        const tradeCounts = [];
+        for (const dt = new Date(new Date(startDate).setDate(new Date(startDate).getDate() - 1)); dt <= new Date(new Date().setUTCHours(23, 59, 59)); dt.setDate(dt.getDate() + 1)) {
+          const end = new Date(new Date(dt).setDate(dt.getDate() + 1));
+          const dayTrades = trades.filter(trade => new Date(trade.executions[0].time) >= dt && new Date(trade.executions[0].time) < end);
+          data.push(dayTrades.reduce((acc, trade) => acc + trade.executions.reduce((acc2, execution) => acc2 + execution.quantity * execution.price * (execution.action === "BUY" ? -1 : 1) - execution.fees, 0.0), 0.0));
+          tradeCounts.push(dayTrades.length);
+        }
+
+        let i = 0;
+        ref.current.childNodes.forEach(cell => {
+          if (cell.className === "cell") {
+            cell.style.backgroundColor = i < data.length && data[i] != 0.0 ? data[i] > 0.0 ? "green" : "darkred" : S("background-secondary");
+            cell.innerHTML = `<span class="date">${startDate.getDate()}</span><span class="trades">${i < data.length ? tradeCounts[i] : 0} trade${i >= data.length || tradeCounts[i] != 1 ? "s" : ""}</span><span class="price">${C(i < data.length ? data[i++] : 0.0)}</span>`;
+            startDate.setDate(startDate.getDate() + 1);
+          }
+        });
+      }, [trades, currency, theme]);
+
+      return h("div", {ref, id: "trade-calendar"},
+        h("div", {className: "header"}, "Sunday"),
+        h("div", {className: "header"}, "Monday"),
+        h("div", {className: "header"}, "Tuesday"),
+        h("div", {className: "header"}, "Wednesday"),
+        h("div", {className: "header"}, "Thursday"),
+        h("div", {className: "header"}, "Friday"),
+        h("div", {className: "header"}, "Saturday"),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
+        h("div", {className: "cell"}),
       );
     };
 
@@ -735,6 +809,41 @@
               min-width: min(90%, 700px);
             }
 
+            #trade-calendar {
+              display: grid;
+              margin: 20px;
+              gap: 5px;
+              grid-template: ". . . . . . .";
+              place-content: center center;
+              text-align: center;
+            }
+
+            #trade-calendar .header {
+              background-color: ${S("background-secondary")};
+              font-weight: bold;
+              width: 100px;
+              padding: 3px 0;
+            }
+
+
+            #trade-calendar .cell {
+              display: flex;
+              flex-direction: column;
+              justify-content: space-around;
+              background-color: ${S("background-secondary")};
+              width: 100px;
+              height: 100px;
+            }
+
+            #trade-calendar .date {
+              display: block;
+              font-weight: bold;
+            }
+
+            #trade-calendar .price {
+              font-size: 1.2em;
+            }
+
             .trade-stats {
               display: flex;
               flex-wrap: wrap;
@@ -786,6 +895,7 @@
           showTradeEntry && h(TradeEntry, {trade: editingTrade, setTrade: setEditingTrade, onSaveTrade: onEditingTradeSave, closeSelf: () => setShowTradeEntry(false)}),
           h(TradeStats, {trades}),
           h(TradeCharts, {trades}),
+          h(TradeCalendar, {trades}),
           h(TradeTable, {trades, editTrade, removeTrade}),
           h("footer", null,
             "Made with ❤️ by Dfra",
